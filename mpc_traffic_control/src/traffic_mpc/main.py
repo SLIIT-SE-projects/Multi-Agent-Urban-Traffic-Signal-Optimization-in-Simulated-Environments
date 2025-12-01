@@ -1,6 +1,6 @@
 """
 Main Application Entry Point.
-Orchestrates SUMO, Estimation, MPC Control Loop, and Telemetry.
+Orchestrates SUMO, Estimation, Demand Prediction, MPC Control Loop, and Telemetry.
 """
 import logging
 import time
@@ -14,8 +14,10 @@ from traffic_mpc.config.settings import AppConfig
 from traffic_mpc.interface.sumo_client import SumoClient
 from traffic_mpc.core.estimation import StateEstimator
 from traffic_mpc.core.controller import MPCController
+# --- NEW IMPORT FOR PHASE 8 ---
+from traffic_mpc.core.prediction import DemandPredictor 
 from traffic_mpc.utils.logging import setup_logging
-from traffic_mpc.utils.telemetry import TelemetryRecorder # <--- NEW IMPORT
+from traffic_mpc.utils.telemetry import TelemetryRecorder
 
 @hydra.main(version_base=None, config_path="../../conf", config_name="config")
 def main(cfg: DictConfig):
@@ -50,6 +52,7 @@ def main(cfg: DictConfig):
 
         # 4. Initialize Components
         estimator = StateEstimator(link_ids=active_lanes)
+        
         controller = MPCController(
             mpc_config=app_config.mpc,
             opt_config=app_config.optimization,
@@ -57,7 +60,15 @@ def main(cfg: DictConfig):
             phases=[]
         )
 
-        # --- NEW: Setup Telemetry ---
+        # --- PHASE 8: Initialize Predictor ---
+        # This will try to load 'data/model.pth'. If missing, it uses Heuristics.
+        predictor = DemandPredictor(
+            config=app_config.mpc, 
+            lane_ids=active_lanes, 
+            model_path="data/model.pth" 
+        )
+
+        # Setup Telemetry
         recorder = TelemetryRecorder(
             output_dir=app_config.logging.log_dir,
             filename="simulation_data.csv",
@@ -76,11 +87,18 @@ def main(cfg: DictConfig):
             raw_data = client.get_detector_data()
             state = estimator.update(raw_data)
             
+            # --- PHASE 8: Update Prediction History ---
+            # Extract raw flow/queue data to feed the LSTM buffer
+            current_flows = {k.replace("e2_", ""): v for k, v in raw_data.items()}
+            predictor.update_history(current_flows)
+            
             current_u = 0.0 # Default for plotting
             
             # Optimize (Every 5 seconds)
             if step % control_interval == 0:
-                demand_matrix = np.zeros((len(active_lanes), app_config.mpc.prediction_horizon))
+                # --- PHASE 8: Generate Intelligent Forecast ---
+                # Replaces demand_matrix = np.zeros(...)
+                demand_matrix = predictor.predict()
                 
                 # Run Optimization
                 u_opt = controller.optimize(state, demand_matrix)
@@ -95,6 +113,7 @@ def main(cfg: DictConfig):
                         is_green = ('G' in current_state or 'g' in current_state)
                         is_yellow = ('y' in current_state or 'Y' in current_state)
                         
+                        # Only extend if GREEN and NOT YELLOW
                         if is_green and not is_yellow:
                             client.set_phase_duration(tls_id, extension)
                             
