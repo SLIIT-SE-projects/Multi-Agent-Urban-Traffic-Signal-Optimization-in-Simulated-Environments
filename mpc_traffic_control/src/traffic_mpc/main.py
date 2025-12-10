@@ -1,7 +1,11 @@
 """
 Main Application Entry Point.
 <<<<<<< Updated upstream
+<<<<<<< Updated upstream
 Orchestrates SUMO, Estimation, MPC Control Loop, and Telemetry.
+=======
+Phase Split Optimization + Anti-Spillback Capacity Constraints.
+>>>>>>> Stashed changes
 =======
 Phase Split Optimization + Anti-Spillback Capacity Constraints.
 >>>>>>> Stashed changes
@@ -15,7 +19,10 @@ from traffic_mpc.interface.sumo_client import SumoClient
 from traffic_mpc.core.estimation import StateEstimator
 from traffic_mpc.core.controller import MPCController
 <<<<<<< Updated upstream
+<<<<<<< Updated upstream
 =======
+=======
+>>>>>>> Stashed changes
 from traffic_mpc.core.prediction import DemandPredictor 
 >>>>>>> Stashed changes
 from traffic_mpc.utils.logging import setup_logging
@@ -59,6 +66,7 @@ def main(cfg: DictConfig):
 
         tls_ids = traci.trafficlight.getIDList()
 <<<<<<< Updated upstream
+<<<<<<< Updated upstream
         logger.info(f"Found Intersections: {tls_ids}")
 
         # 4. Initialize Components
@@ -89,11 +97,26 @@ def main(cfg: DictConfig):
             if local_lanes:
                 controllers[tls_id] = MPCController(app_config.mpc, app_config.optimization, local_lanes, [])
 
+=======
+        estimator = StateEstimator(link_ids=all_lanes)
+        predictor = DemandPredictor(app_config.mpc, all_lanes, "data/model.pth")
+        
+        controllers = {}
+        for tls_id in tls_ids:
+            links = traci.trafficlight.getControlledLinks(tls_id)
+            local_lanes = sorted(list(set([l[0][0] for l in links if l])))
+            if local_lanes:
+                controllers[tls_id] = MPCController(app_config.mpc, app_config.optimization, local_lanes, [])
+
+>>>>>>> Stashed changes
         recorder = TelemetryRecorder(app_config.logging.log_dir, "simulation_data.csv", 
                                    ["step", "time", "avg_queue", "max_queue", "avg_split"])
 
         # SLOW INTERVAL: Plan every 60s
         control_interval = 60 
+<<<<<<< Updated upstream
+>>>>>>> Stashed changes
+=======
 >>>>>>> Stashed changes
         step = 0
         max_steps = 3600
@@ -106,18 +129,24 @@ def main(cfg: DictConfig):
             predictor.update_history({k.replace("e2_", ""): v for k, v in raw_data.items()})
             
 <<<<<<< Updated upstream
+<<<<<<< Updated upstream
             current_u = 0.0 # Default for plotting
             
             # Optimize (Every 5 seconds)
             if step % control_interval == 0:
                 demand_matrix = np.zeros((len(active_lanes), app_config.mpc.prediction_horizon))
 =======
+=======
+>>>>>>> Stashed changes
             avg_split = 0.0
             
             if do_control and (step % control_interval == 0):
                 demand = predictor.predict()
                 total_green = 0
                 count = 0
+<<<<<<< Updated upstream
+>>>>>>> Stashed changes
+=======
 >>>>>>> Stashed changes
                 
                 for tls_id, controller in controllers.items():
@@ -125,6 +154,7 @@ def main(cfg: DictConfig):
                     # This prevents the "Snake Game" logic where we push cars into full lanes
                     splits = controller.optimize(state, demand, lane_capacities)
                     
+<<<<<<< Updated upstream
 <<<<<<< Updated upstream
                     for tls_id in tls_ids:
                         current_state = traci.trafficlight.getRedYellowGreenState(tls_id)
@@ -137,6 +167,8 @@ def main(cfg: DictConfig):
                     current_max_q = max(state.values()) if state else 0
                     logger.info(f"Step {step}: Queue={current_max_q:.1f} | MPC u={u_opt:.2f} -> Extending Green")
 =======
+=======
+>>>>>>> Stashed changes
                     logic = traci.trafficlight.getAllProgramLogics(tls_id)[0]
                     phases = logic.phases
                     
@@ -153,6 +185,9 @@ def main(cfg: DictConfig):
                 avg_split = total_green / max(1, count)
                 if step % 60 == 0:
                     logger.info(f"Step {step}: Planning Cycle. Avg Main Green: {avg_split:.1f}s")
+<<<<<<< Updated upstream
+>>>>>>> Stashed changes
+=======
 >>>>>>> Stashed changes
 
             queues = list(state.values())
