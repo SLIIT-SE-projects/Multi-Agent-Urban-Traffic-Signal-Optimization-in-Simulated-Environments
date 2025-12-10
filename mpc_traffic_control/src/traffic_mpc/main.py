@@ -1,32 +1,22 @@
 """
 Main Application Entry Point.
-<<<<<<< Updated upstream
-<<<<<<< Updated upstream
-Orchestrates SUMO, Estimation, MPC Control Loop, and Telemetry.
-=======
-Phase Split Optimization + Anti-Spillback Capacity Constraints.
->>>>>>> Stashed changes
-=======
-Phase Split Optimization + Anti-Spillback Capacity Constraints.
->>>>>>> Stashed changes
+Features: 
+- INCIDENCE MATRIX BUILDING (Maps Phases to Lanes)
+- THROUGHPUT MAXIMIZATION
+- ANTI-SPILLBACK
 """
 import logging
 import hydra
 import traci 
+import numpy as np
 from omegaconf import DictConfig, OmegaConf
 from traffic_mpc.config.settings import AppConfig
 from traffic_mpc.interface.sumo_client import SumoClient
 from traffic_mpc.core.estimation import StateEstimator
 from traffic_mpc.core.controller import MPCController
-<<<<<<< Updated upstream
-<<<<<<< Updated upstream
-=======
-=======
->>>>>>> Stashed changes
 from traffic_mpc.core.prediction import DemandPredictor 
->>>>>>> Stashed changes
 from traffic_mpc.utils.logging import setup_logging
-from traffic_mpc.utils.telemetry import TelemetryRecorder # <--- NEW IMPORT
+from traffic_mpc.utils.telemetry import TelemetryRecorder
 
 @hydra.main(version_base=None, config_path="../../conf", config_name="config")
 def main(cfg: DictConfig):
@@ -38,7 +28,7 @@ def main(cfg: DictConfig):
 
     setup_logging(app_config.logging)
     logger = logging.getLogger(__name__)
-    logger.info("--- Starting MPC (Anti-Gridlock Mode) ---")
+    logger.info("--- Starting MPC (Matrix Incidence Mode) ---")
     
     do_control = cfg.get("control_enabled", True)
     
@@ -48,147 +38,133 @@ def main(cfg: DictConfig):
     try:
         client.step()
         detectors = client.get_detector_data()
-        all_lanes = sorted(list(set([d.replace("e2_", "") for d in detectors.keys()])))
+        # Map detectors to lanes
+        det_lane_map = {d: traci.lanearea.getLaneID(d) for d in traci.lanearea.getIDList()}
+        all_lanes = sorted(list(set(det_lane_map.values())))
         
-        # --- MEASURE CAPACITIES ---
-        # Calculate max vehicles per lane based on length
+        # Capacities
         lane_capacities = {}
         for lid in all_lanes:
             try:
-                length = traci.lane.getLength(lid)
-                # Assume 7.5m per vehicle (jam distance)
-                capacity = length / 7.5
-                lane_capacities[lid] = capacity
+                lane_capacities[lid] = traci.lane.getLength(lid) / 7.5
             except:
-                lane_capacities[lid] = 40.0 # Fallback
-                
-        logger.info(f"Measured capacities for {len(lane_capacities)} lanes.")
+                lane_capacities[lid] = 40.0
 
         tls_ids = traci.trafficlight.getIDList()
-<<<<<<< Updated upstream
-<<<<<<< Updated upstream
-        logger.info(f"Found Intersections: {tls_ids}")
-
-        # 4. Initialize Components
-        estimator = StateEstimator(link_ids=active_lanes)
-        controller = MPCController(
-            mpc_config=app_config.mpc,
-            opt_config=app_config.optimization,
-            lane_ids=active_lanes,
-            phases=[]
-        )
-
-        # --- NEW: Setup Telemetry ---
-        recorder = TelemetryRecorder(
-            output_dir=app_config.logging.log_dir,
-            filename="simulation_data.csv",
-            headers=["step", "time", "avg_queue", "max_queue", "control_u"]
-        )
-
-        # 5. Main Loop
-=======
         estimator = StateEstimator(link_ids=all_lanes)
         predictor = DemandPredictor(app_config.mpc, all_lanes, "data/model.pth")
         
         controllers = {}
-        for tls_id in tls_ids:
-            links = traci.trafficlight.getControlledLinks(tls_id)
-            local_lanes = sorted(list(set([l[0][0] for l in links if l])))
-            if local_lanes:
-                controllers[tls_id] = MPCController(app_config.mpc, app_config.optimization, local_lanes, [])
-
-=======
-        estimator = StateEstimator(link_ids=all_lanes)
-        predictor = DemandPredictor(app_config.mpc, all_lanes, "data/model.pth")
+        # Store incidence matrices per TLS
+        tls_matrices = {}
         
-        controllers = {}
         for tls_id in tls_ids:
             links = traci.trafficlight.getControlledLinks(tls_id)
+            # Get unique incoming lanes
             local_lanes = sorted(list(set([l[0][0] for l in links if l])))
+            
+            # Filter for monitored
+            local_lanes = [l for l in local_lanes if l in all_lanes]
+            
             if local_lanes:
                 controllers[tls_id] = MPCController(app_config.mpc, app_config.optimization, local_lanes, [])
+                
+                # --- BUILD INCIDENCE MATRIX ---
+                # Rows = Lanes, Cols = Phases (Assume 4)
+                phases = 4
+                inc_matrix = np.zeros((len(local_lanes), phases))
+                
+                logic = traci.trafficlight.getAllProgramLogics(tls_id)[0]
+                # Look at first 4 Green phases (or as many as exist)
+                p_idx = 0
+                for phase in logic.phases:
+                    if 'G' in phase.state or 'g' in phase.state:
+                        if p_idx >= phases: break
+                        
+                        # Check which lanes are Green in this phase state string
+                        for i, char in enumerate(phase.state):
+                            if char.lower() == 'g':
+                                # Find which lane corresponds to index i
+                                # links[i] is a list of connections from one lane
+                                if i < len(links):
+                                    for link in links[i]:
+                                        lane_id = link[0]
+                                        if lane_id in local_lanes:
+                                            l_idx = local_lanes.index(lane_id)
+                                            inc_matrix[l_idx, p_idx] = 1
+                        p_idx += 1
+                        
+                tls_matrices[tls_id] = inc_matrix
 
->>>>>>> Stashed changes
         recorder = TelemetryRecorder(app_config.logging.log_dir, "simulation_data.csv", 
                                    ["step", "time", "avg_queue", "max_queue", "avg_split"])
 
-        # SLOW INTERVAL: Plan every 60s
         control_interval = 60 
-<<<<<<< Updated upstream
->>>>>>> Stashed changes
-=======
->>>>>>> Stashed changes
         step = 0
         max_steps = 3600
 
         while step < max_steps:
             client.step()
             
-            raw_data = client.get_detector_data()
-            state = estimator.update(raw_data)
-            predictor.update_history({k.replace("e2_", ""): v for k, v in raw_data.items()})
+            raw_det = client.get_detector_data()
+            lane_data = {det_lane_map.get(d): val for d, val in raw_det.items() if d in det_lane_map}
             
-<<<<<<< Updated upstream
-<<<<<<< Updated upstream
-            current_u = 0.0 # Default for plotting
+            state = estimator.update(lane_data)
+            predictor.update_history(lane_data)
             
-            # Optimize (Every 5 seconds)
-            if step % control_interval == 0:
-                demand_matrix = np.zeros((len(active_lanes), app_config.mpc.prediction_horizon))
-=======
-=======
->>>>>>> Stashed changes
             avg_split = 0.0
             
             if do_control and (step % control_interval == 0):
-                demand = predictor.predict()
+                # Shape [n_total_lanes, Horizon]
+                global_demand = predictor.predict() 
+                
                 total_green = 0
                 count = 0
-<<<<<<< Updated upstream
->>>>>>> Stashed changes
-=======
->>>>>>> Stashed changes
                 
                 for tls_id, controller in controllers.items():
-                    # Pass Capacities to Solver
-                    # This prevents the "Snake Game" logic where we push cars into full lanes
-                    splits = controller.optimize(state, demand, lane_capacities)
+                    # 1. Prepare Local Data
+                    indices = [all_lanes.index(l) for l in controller.lane_ids]
                     
-<<<<<<< Updated upstream
-<<<<<<< Updated upstream
-                    for tls_id in tls_ids:
-                        current_state = traci.trafficlight.getRedYellowGreenState(tls_id)
-                        is_green = ('G' in current_state or 'g' in current_state)
-                        is_yellow = ('y' in current_state or 'Y' in current_state)
-                        
-                        if is_green and not is_yellow:
-                            client.set_phase_duration(tls_id, extension)
-                            
-                    current_max_q = max(state.values()) if state else 0
-                    logger.info(f"Step {step}: Queue={current_max_q:.1f} | MPC u={u_opt:.2f} -> Extending Green")
-=======
-=======
->>>>>>> Stashed changes
+                    # Ensure Demand is [n_local_lanes, N]
+                    # global_demand might be 1D or 2D. 
+                    if global_demand.ndim == 1:
+                        # Reshape to (n_total, N) if needed, or assume N=1
+                        # For safety, let controller handle reshaping if we pass flat slice
+                        local_demand = global_demand[indices] # This is 1D slice
+                        # Reshape for controller [n_local, 1] -> broadcast to N
+                        local_demand = local_demand.reshape(-1, 1) 
+                    else:
+                        local_demand = global_demand[indices, :]
+
+                    # 2. Get Incidence Matrix
+                    inc_matrix = tls_matrices.get(tls_id, np.zeros((len(controller.lane_ids), 4)))
+                    
+                    # 3. Optimize
+                    splits = controller.optimize(state, local_demand, lane_capacities, inc_matrix)
+                    
+                    # 4. Apply
                     logic = traci.trafficlight.getAllProgramLogics(tls_id)[0]
                     phases = logic.phases
                     
-                    # Apply Phase Splits
-                    if len(phases) >= 4:
-                        phases[0].duration = splits[0]
-                        phases[2].duration = splits[1]
-                        logic.phases = phases
-                        traci.trafficlight.setCompleteRedYellowGreenDefinition(tls_id, logic)
+                    # Update durations of Green phases
+                    # Assume pattern G-y-G-y...
+                    g_idx = 0
+                    for p in range(len(phases)):
+                        if 'G' in phases[p].state or 'g' in phases[p].state:
+                            if g_idx < len(splits):
+                                phases[p].duration = splits[g_idx]
+                                g_idx += 1
+                                
+                    logic.phases = phases
+                    traci.trafficlight.setCompleteRedYellowGreenDefinition(tls_id, logic)
                     
-                    total_green += splits[0]
-                    count += 1
+                    if splits:
+                        total_green += splits[0]
+                        count += 1
                 
                 avg_split = total_green / max(1, count)
                 if step % 60 == 0:
-                    logger.info(f"Step {step}: Planning Cycle. Avg Main Green: {avg_split:.1f}s")
-<<<<<<< Updated upstream
->>>>>>> Stashed changes
-=======
->>>>>>> Stashed changes
+                    logger.info(f"Step {step}: Cycle Optimized. Avg Main Green: {avg_split:.1f}s")
 
             queues = list(state.values())
             recorder.record([step, client.get_time(), sum(queues)/len(queues) if queues else 0, max(queues) if queues else 0, avg_split])
