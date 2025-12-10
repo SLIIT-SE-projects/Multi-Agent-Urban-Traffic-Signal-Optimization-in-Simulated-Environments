@@ -1,0 +1,3 @@
+- control_enabled=True
+- logging.log_dir=data/logs/mpc
+- sumo.use_gui=True
