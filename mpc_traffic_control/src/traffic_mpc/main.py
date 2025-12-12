@@ -1,103 +1,132 @@
 """
-Demand Prediction Module.
-Uses an LSTM neural network to forecast future vehicle arrivals.
+Main Application Entry Point.
+Phase Split Optimization + Anti-Spillback Capacity Constraints.
+Orchestrates SUMO, Estimation, MPC Control Loop, and Telemetry.
 """
-import torch
-import torch.nn as nn
-import numpy as np
 import logging
-import os
-from traffic_mpc.config.settings import MPCConfig
+import hydra
+import traci 
+import numpy as np
+from omegaconf import DictConfig, OmegaConf
+from traffic_mpc.config.settings import AppConfig
+from traffic_mpc.interface.sumo_client import SumoClient
+from traffic_mpc.core.estimation import StateEstimator
+from traffic_mpc.core.controller import MPCController
+from traffic_mpc.core.prediction import DemandPredictor 
+from traffic_mpc.utils.logging import setup_logging
+from traffic_mpc.utils.telemetry import TelemetryRecorder
 
-logger = logging.getLogger(__name__)
+@hydra.main(version_base=None, config_path="../../conf", config_name="config")
+def main(cfg: DictConfig):
+    try:
+        app_config = AppConfig(**OmegaConf.to_container(cfg, resolve=True))
+    except Exception as e:
+        print(f"Configuration Error: {e}")
+        return
 
-class TrafficLSTM(nn.Module):
-    """Simple LSTM for time-series forecasting."""
-    def __init__(self, input_size, hidden_size, output_size):
-        super(TrafficLSTM, self).__init__()
-        self.hidden_size = hidden_size
-        self.lstm = nn.LSTM(input_size, hidden_size, batch_first=True)
-        self.fc = nn.Linear(hidden_size, output_size)
+    setup_logging(app_config.logging)
+    logger = logging.getLogger(__name__)
+    logger.info("--- Starting MPC (Anti-Gridlock Mode) ---")
+    
+    do_control = cfg.get("control_enabled", True)
+    
+    client = SumoClient(app_config.sumo)
+    client.start()
 
-    def forward(self, x):
-        # x shape: (batch, seq_len, input_size)
-        out, _ = self.lstm(x)
-        # Take the output of the last time step
-        out = self.fc(out[:, -1, :])
-        return out
-
-class DemandPredictor:
-    """
-    Wrapper for the LSTM model to handle data buffering and inference.
-    """
-    def __init__(self, config: MPCConfig, lane_ids: list, model_path: str = None):
-        self.cfg = config
-        self.lane_ids = lane_ids
-        self.n_lanes = len(lane_ids)
+    try:
+        client.step()
+        detectors = client.get_detector_data()
+        # Clean lane IDs by removing 'e2_' prefix
+        all_lanes = sorted(list(set([d.replace("e2_", "") for d in detectors.keys()])))
         
-        # 1. Initialize Model Architecture
-        # Output size = Lanes * Horizon (Predicting flow for every lane at every future step)
-        self.model = TrafficLSTM(
-            input_size=self.n_lanes,
-            hidden_size=64,
-            output_size=self.n_lanes * self.cfg.prediction_horizon
-        )
-        
-        self.model_loaded = False
-        if model_path and os.path.exists(model_path):
+        # --- MEASURE CAPACITIES ---
+        # Calculate max vehicles per lane based on length
+        lane_capacities = {}
+        for lid in all_lanes:
             try:
-                self.model.load_state_dict(torch.load(model_path))
-                self.model.eval()
-                self.model_loaded = True
-                logger.info(f"Loaded LSTM model from {model_path}")
-            except Exception as e:
-                logger.warning(f"Failed to load model: {e}")
-        else:
-            logger.info("No pre-trained model found. Running in Heuristic Mode.")
+                length = traci.lane.getLength(lid)
+                # Assume 7.5m per vehicle (jam distance)
+                capacity = length / 7.5
+                lane_capacities[lid] = capacity
+            except:
+                lane_capacities[lid] = 40.0 # Fallback
+                
+        logger.info(f"Measured capacities for {len(lane_capacities)} lanes.")
 
-        # 2. History Buffer (Sliding Window)
-        # We need the last 10 steps to predict the future
-        self.history_steps = 10
-        self.history_buffer = [] 
+        tls_ids = traci.trafficlight.getIDList()
+        
+        # Initialize Components
+        estimator = StateEstimator(link_ids=all_lanes)
+        predictor = DemandPredictor(app_config.mpc, all_lanes, "data/model.pth")
+        
+        controllers = {}
+        for tls_id in tls_ids:
+            links = traci.trafficlight.getControlledLinks(tls_id)
+            local_lanes = sorted(list(set([l[0][0] for l in links if l])))
+            if local_lanes:
+                controllers[tls_id] = MPCController(app_config.mpc, app_config.optimization, local_lanes, [])
 
-    def update_history(self, current_flows: dict):
-        """Add current flow rates to history buffer."""
-        # Map flow dict to sorted vector matching lane_ids
-        flow_vec = [current_flows.get(lid, 0.0) for lid in self.lane_ids]
-        self.history_buffer.append(flow_vec)
-        
-        # Keep buffer fixed size
-        if len(self.history_buffer) > self.history_steps:
-            self.history_buffer.pop(0)
+        # Setup Telemetry - Saves to CSV for the Dashboard
+        recorder = TelemetryRecorder(
+            app_config.logging.log_dir, 
+            "simulation_data.csv", 
+            ["step", "time", "avg_queue", "max_queue", "avg_split"]
+        )
 
-    def predict(self) -> np.ndarray:
-        """
-        Generates demand forecast matrix D [n_lanes, Np].
-        """
-        horizon = self.cfg.prediction_horizon
-        
-        # Case A: Trained Model Available
-        if self.model_loaded and len(self.history_buffer) == self.history_steps:
-            input_tensor = torch.FloatTensor([self.history_buffer]) # Add batch dim
-            with torch.no_grad():
-                prediction = self.model(input_tensor)
+        # CONTROL LOOP CONFIG
+        control_interval = 60 
+        step = 0
+        max_steps = 3600
+
+        while step < max_steps:
+            client.step()
             
-            # Reshape [1, n_lanes * horizon] -> [n_lanes, horizon]
-            d_matrix = prediction.numpy().reshape(self.n_lanes, horizon)
-            return np.maximum(d_matrix, 0.0)
+            raw_data = client.get_detector_data()
+            state = estimator.update(raw_data)
             
-        # Case B: Heuristic Prediction (Persistence)
-        # "Traffic now is likely to continue for the next few seconds"
-        if not self.history_buffer:
-            return np.zeros((self.n_lanes, horizon))
+            # Update predictor with clean IDs
+            predictor.update_history({k.replace("e2_", ""): v for k, v in raw_data.items()})
             
-        last_flow = np.array(self.history_buffer[-1])
-        
-        # Extrapolate last flow forward
-        d_matrix = np.tile(last_flow[:, np.newaxis], (1, horizon)).astype(float)
-        
-        # Add slight noise to prevent solver singularities
-        noise = np.random.normal(0, 0.1, d_matrix.shape)
-        d_matrix += noise
-        
-        return np.maximum(d_matrix, 0.0)
+            avg_split = 0.0
+            
+            if do_control and (step % control_interval == 0):
+                demand = predictor.predict()
+                total_green = 0
+                count = 0
+                
+                for tls_id, controller in controllers.items():
+                    # Pass Capacities to Solver (Anti-Spillback Logic)
+                    splits = controller.optimize(state, demand, lane_capacities)
+                    
+                    logic = traci.trafficlight.getAllProgramLogics(tls_id)[0]
+                    phases = logic.phases
+                    
+                    # Apply Phase Splits (Assuming Standard 4-Phase Cycle)
+                    if len(phases) >= 4:
+                        phases[0].duration = splits[0]
+                        phases[2].duration = splits[1]
+                        logic.phases = phases
+                        traci.trafficlight.setCompleteRedYellowGreenDefinition(tls_id, logic)
+                    
+                    total_green += splits[0]
+                    count += 1
+                
+                avg_split = total_green / max(1, count)
+                if step % 60 == 0:
+                    logger.info(f"Step {step}: Planning Cycle. Avg Main Green: {avg_split:.1f}s")
+
+            queues = list(state.values())
+            
+            # Record Data for Dashboard
+            avg_q = sum(queues)/len(queues) if queues else 0
+            max_q = max(queues) if queues else 0
+            
+            recorder.record([step, client.get_time(), avg_q, max_q, avg_split])
+            step += 1
+
+    finally:
+        if 'recorder' in locals(): recorder.close()
+        client.close()
+
+if __name__ == "__main__":
+    main()

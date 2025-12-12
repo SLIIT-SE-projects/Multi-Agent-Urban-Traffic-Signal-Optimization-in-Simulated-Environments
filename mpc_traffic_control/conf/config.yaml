@@ -1,15 +1,18 @@
 defaults:
   - _self_
-  - mpc: conservative     # Defaults to 'conservative' tuning
-  
-  - platform@sumo: local_sumo  # Defaults to running locally
+  - mpc: conservative
+  - platform@sumo: local_sumo
   - network: grid_3x3
+
+# NEW FLAG: Set to true for MPC, false for Baseline
+control_enabled: true 
 
 optimization:
   solver_name: "ipopt"
   time_limit: 0.1
-  weight_queue: 100.0
-  weight_switch: 0.1
+  weight_queue: 10000.0
+  weight_delay: 0.0
+  weight_switch: 0.01
 
 logging:
   level: "INFO"
