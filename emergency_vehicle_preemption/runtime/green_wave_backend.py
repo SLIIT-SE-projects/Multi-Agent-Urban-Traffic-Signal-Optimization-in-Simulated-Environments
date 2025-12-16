@@ -124,7 +124,12 @@ class GreenWaveController:
                 "type": "status",
                 "ev_id": self.ev_id,
                 "active": False,
-                # ... defaults ...
+                "eta": 0.0,
+                "speed": 0.0,
+                "lat": 0.0,
+                "lon": 0.0,
+                "green_wave_active": False,
+                "tls_id": ""
             }
 
         try:
@@ -132,19 +137,23 @@ class GreenWaveController:
             x, y = traci.vehicle.getPosition(self.ev_id)
             
             # --- GEO-CONVERSION ---
-            # Center of the map (Arbitrary "Home" location)
-            # Example: London Eye
-            REF_LAT = 51.5033
-            REF_LON = -0.1195
-            
-            # Simple Meter-to-Degree conversion (approximate but fine for demo)
-            # 1 deg lat ~ 111km, 1 deg lon ~ 111km * cos(lat)
-            meters_per_deg_lat = 111132.954
-            meters_per_deg_lon = 111132.954 * np.cos(np.radians(REF_LAT))
-            
-            lat = REF_LAT + (y / meters_per_deg_lat)
-            lon = REF_LON + (x / meters_per_deg_lon)
-            
+            # Use SUMO's built-in conversion for accurate Real-World mapping
+            try:
+                lon, lat = traci.simulation.convertGeo(x, y)
+            except Exception as e:
+                # Fallback if projection fails
+                print(f"GeoConversion Error: {e}")
+                lat, lon = 0.0, 0.0
+
+            # Get Distance to Next TLS
+            dist_to_tls = 0.0
+            try:
+                next_tls_info = traci.vehicle.getNextTLS(self.ev_id)
+                if next_tls_info:
+                    # Format: (tlsID, tlsIndex, distance, state)
+                    dist_to_tls = next_tls_info[0][2]
+            except: pass
+
             is_green_wave = (self.active_override_tls is not None)
             
             return {
@@ -153,6 +162,7 @@ class GreenWaveController:
                 "active": True,
                 "eta": float(f"{self.smoothed_eta:.1f}") if self.smoothed_eta else 0.0,
                 "speed": float(f"{speed * 3.6:.1f}"),
+                "dist_to_tls": float(f"{dist_to_tls:.1f}"),
                 "lat": lat,
                 "lon": lon,
                 "green_wave_active": is_green_wave,
