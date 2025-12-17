@@ -66,11 +66,15 @@ class MegaScenarioGenerator:
             "--geometry.remove", "true",  # Simplify geometry slightly for performance
             "--roundabouts.guess", "true",
             "--ramps.guess", "true",
-            "--junctions.join", "true",
             "--tls.guess", "true",
-            "--tls.discard-simple", "true",
+            "--tls.default-type", "actuated",
+            "--tls.guess.threshold", "10",    # Aggressive: Guess for almost all roads
+            "--tls.guess.joining", "true",    # Include joined nodes in guessing
             "--tls.join", "true",
-            "--proj.utm",  # Project to UTM (meters)
+            "--tls.join-dist", "40",          # Merge lights within 40m
+            "--junctions.join", "true",
+            "--junctions.join-dist", "20",    # Merge complex intersections
+            "--proj.utm",
             "--remove-edges.isolated", "true",
         ]
         subprocess.run(cmd, check=True)
@@ -89,7 +93,8 @@ class MegaScenarioGenerator:
 
         # A. Background Traffic (Flows)
         # We generate random flows to keep the grid busy throughout the hour
-        for i in range(100):
+        # Increased to 500 flows for better density on the large map
+        for i in range(500):
             begin = random.randint(0, SIMULATION_DURATION - 200)
             src, dst = random.sample(valid_edges, 2)
             all_trips.append({
@@ -98,7 +103,7 @@ class MegaScenarioGenerator:
                 "type": "car",
                 "begin": begin,
                 "end": begin + 600, # Flow lasts 10 mins
-                "number": random.randint(5, 15), # 5-15 cars per flow
+                "number": random.randint(10, 30), # 10-30 cars per flow
                 "from": src, "to": dst
             })
 
