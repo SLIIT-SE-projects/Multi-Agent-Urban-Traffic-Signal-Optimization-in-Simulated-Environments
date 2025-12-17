@@ -1,0 +1,4 @@
+<configuration>
+    <input><net-file value="..\networks\colombo.net.xml"/><route-files value="..\routes\colombo_mega_scenario.rou.xml"/></input>
+    <time><begin value="0"/><end value="4000"/></time>
+</configuration>

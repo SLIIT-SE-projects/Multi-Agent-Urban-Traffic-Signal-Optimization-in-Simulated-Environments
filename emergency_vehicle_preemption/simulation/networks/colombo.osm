@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <osm version="0.6" generator="Overpass API 0.7.62.8 e802775f">
 <note>The data included in this document is from www.openstreetmap.org. The data is made available under ODbL.</note>
-<meta osm_base="2025-12-25T17:48:04Z"/>
+<meta osm_base="2025-12-28T03:47:14Z"/>
 
   <bounds minlat="6.9000000" minlon="79.8850000" maxlat="6.9250000" maxlon="79.9700000"/>
 
@@ -42,7 +42,7 @@
   <node id="256823957" lat="6.9022148" lon="79.9195726" version="21" timestamp="2022-03-14T07:17:03Z" changeset="118457003" uid="248338" user="mbethke"/>
   <node id="256823967" lat="6.9028659" lon="79.9123199" version="9" timestamp="2015-11-27T02:22:12Z" changeset="35604018" uid="2266634" user="ajithkarunaratne"/>
   <node id="256823978" lat="6.8956960" lon="79.9150623" version="4" timestamp="2014-11-07T13:09:58Z" changeset="26614112" uid="2266634" user="ajithkarunaratne"/>
-  <node id="256824244" lat="6.9021809" lon="79.9195776" version="22" timestamp="2025-12-23T13:02:16Z" changeset="176307297" uid="4839043" user="Alexis Giraud-Courtney (CoMaps)">
+  <node id="256824244" lat="6.9021809" lon="79.9195776" version="24" timestamp="2025-12-27T14:22:04Z" changeset="176485720" uid="4839043" user="Alexis Giraud-Courtney (CoMaps)">
     <tag k="is_in:country" v="Sri Lanka"/>
     <tag k="is_in:district" v="Colombo District"/>
     <tag k="is_in:province" v="Western Province"/>
@@ -10846,7 +10846,7 @@
   <node id="3254726384" lat="6.9042566" lon="79.9555409" version="4" timestamp="2020-08-08T12:23:47Z" changeset="89126538" uid="5482181" user="dawiberg"/>
   <node id="3254726385" lat="6.9043064" lon="79.9554154" version="4" timestamp="2020-08-08T12:23:47Z" changeset="89126538" uid="5482181" user="dawiberg"/>
   <node id="3254726386" lat="6.9042753" lon="79.9554028" version="4" timestamp="2020-08-08T12:23:47Z" changeset="89126538" uid="5482181" user="dawiberg"/>
-  <node id="3274475234" lat="6.9040723" lon="79.9546189" version="13" timestamp="2025-12-23T13:02:16Z" changeset="176307297" uid="4839043" user="Alexis Giraud-Courtney (CoMaps)">
+  <node id="3274475234" lat="6.9040723" lon="79.9546189" version="15" timestamp="2025-12-27T14:22:04Z" changeset="176485720" uid="4839043" user="Alexis Giraud-Courtney (CoMaps)">
     <tag k="is_in" v="Colombo District;Western Province;Sri Lanka"/>
     <tag k="is_in:country" v="Sri Lanka"/>
     <tag k="is_in:country_code" v="LK"/>
@@ -83901,7 +83901,7 @@
     <tag k="boat" v="no"/>
     <tag k="waterway" v="canal"/>
   </way>
-  <way id="51034388" version="15" timestamp="2025-12-24T10:47:03Z" changeset="176352324" uid="18064741" user="IrtyshRiver">
+  <way id="51034388" version="16" timestamp="2025-12-26T13:07:45Z" changeset="176438287" uid="18064741" user="IrtyshRiver">
     <nd ref="1429213459"/>
     <nd ref="6230908848"/>
     <nd ref="6230908849"/>
@@ -83909,8 +83909,10 @@
     <tag k="highway" v="secondary"/>
     <tag k="lane_markings" v="no"/>
     <tag k="maxspeed" v="40"/>
+    <tag k="name" v="Kotte Road"/>
     <tag k="oneway" v="yes"/>
     <tag k="parking:lane:both" v="no"/>
+    <tag k="ref" v="B469"/>
     <tag k="smoothness" v="good"/>
     <tag k="surface" v="asphalt"/>
   </way>
