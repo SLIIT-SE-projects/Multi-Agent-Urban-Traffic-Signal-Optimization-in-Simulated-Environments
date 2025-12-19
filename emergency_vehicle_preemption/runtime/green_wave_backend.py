@@ -208,7 +208,8 @@ class GreenWaveController:
                 "lat": lat,
                 "lon": lon,
                 "green_wave_active": is_green_wave,
-                "tls_id": display_tls_id
+                "tls_id": display_tls_id,
+                "active_junctions": active_junctions
             }
         except:
             return self._build_status_packet(active=False)
