@@ -167,6 +167,37 @@ class GreenWaveController:
                         break
             except: pass
             
+            # Get Active Junctions for Map
+            active_junctions = []
+            for tls_id in self.active_override_tls_ids:
+                j_lon, j_lat = 0.0, 0.0
+                try:
+                    # PRIMARY METHOD: Get location from controlled lanes
+                    lanes = traci.trafficlight.getControlledLanes(tls_id)
+                    if lanes:
+                        # Use the stop line of the first controlled lane
+                        first_lane_shape = traci.lane.getShape(lanes[0])
+                        if first_lane_shape:
+                            j_pos = first_lane_shape[-1] 
+                            j_lon, j_lat = traci.simulation.convertGeo(j_pos[0], j_pos[1])
+                    
+                    # FALLBACK: If no lanes found (rare), try Junction retrieval
+                    if j_lon == 0.0 and j_lat == 0.0:
+                         j_pos = traci.junction.getPosition(tls_id)
+                         j_lon, j_lat = traci.simulation.convertGeo(j_pos[0], j_pos[1])
+
+                except Exception as e:
+                    # Fail silently for this light if both methods fail
+                    # print(f"Map Loc Error {tls_id}: {e}")
+                    pass
+                
+                if j_lat != 0.0 and j_lon != 0.0:
+                    active_junctions.append({
+                        "id": tls_id,
+                        "lat": j_lat,
+                        "lon": j_lon
+                    })
+
             return {
                 "type": "status",
                 "ev_id": self.ev_id,
