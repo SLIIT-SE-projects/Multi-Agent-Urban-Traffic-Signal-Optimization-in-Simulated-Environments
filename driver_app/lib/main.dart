@@ -46,6 +46,7 @@ class _DriverDashboardState extends State<DriverDashboard> {
   bool isGreenWaveActive = false;
   String currentTls = "";
   LatLng evPosition = const LatLng(0, 0); // Default 0,0 until data comes
+  List<Map<String, dynamic>> activeJunctions = [];
   bool hasData = false;
 
   final MapController _mapController = MapController();
@@ -140,6 +141,18 @@ class _DriverDashboardState extends State<DriverDashboard> {
                             size: 40,
                           ),
                         ),
+                        // Active Green Wave Junctions
+                        for (var junction in activeJunctions)
+                          Marker(
+                            point: LatLng(junction['lat'], junction['lon']),
+                            width: 40,
+                            height: 40,
+                            child: const Icon(
+                              Icons.traffic,
+                              color: Colors.greenAccent,
+                              size: 30,
+                          ),
+                        ),
                       ],
                     ),
                 ],
@@ -202,7 +215,7 @@ class _DriverDashboardState extends State<DriverDashboard> {
               // 3. GREEN WAVE ALERT
               if (isGreenWaveActive)
                 Positioned(
-                  top: 100,
+                  top: 10,
                   left: 20,
                   right: 20,
                   child: Container(
