@@ -237,7 +237,7 @@ class _DriverDashboardState extends State<DriverDashboard> {
                           ),
                         ),
                         Text(
-                          "Intersection $currentTls Cleared",
+                          "${activeJunctions.length} Intersections Cleared",
                           style: const TextStyle(
                             color: Colors.black87,
                             fontSize: 16,
