@@ -151,8 +151,8 @@ class _DriverDashboardState extends State<DriverDashboard> {
                               Icons.traffic,
                               color: Colors.greenAccent,
                               size: 30,
+                            ),
                           ),
-                        ),
                       ],
                     ),
                 ],
@@ -288,6 +288,16 @@ class _DriverDashboardState extends State<DriverDashboard> {
           isGreenWaveActive = decoded['green_wave_active'];
           if (isGreenWaveActive) {
             currentTls = decoded['tls_id'];
+          }
+          
+          // Parse Active Junctions
+          activeJunctions.clear();
+          if (decoded.containsKey('active_junctions')) {
+             for (var j in decoded['active_junctions']) {
+                if (j['lat'] != 0.0 && j['lon'] != 0.0) {
+                   activeJunctions.add(j);
+                }
+             }
           }
           
           // Map Updates
