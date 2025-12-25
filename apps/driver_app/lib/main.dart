@@ -13,7 +13,7 @@ class EVPSDriverApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       title: 'EVPS Driver',
-      theme: AppTheme.darkTheme,
+      theme: AppTheme.lightTheme,
       home: const DriverDashboard(),
     );
   }

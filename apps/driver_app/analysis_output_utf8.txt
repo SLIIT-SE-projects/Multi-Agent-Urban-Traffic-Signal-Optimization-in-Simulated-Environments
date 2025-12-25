@@ -1,0 +1,13 @@
+﻿Analyzing driver_app...                                         
+
+   info - 'background' is deprecated and shouldn't be used. Use surface instead. This feature was deprecated after v3.18.0-0.1.pre - lib\core\theme\app_theme.dart:13:9 - deprecated_member_use
+   info - Don't invoke 'print' in production code - lib\features\navigation\data\services\websocket_service.dart:16:5 - avoid_print
+   info - Don't invoke 'print' in production code - lib\features\navigation\data\services\websocket_service.dart:33:11 - avoid_print
+   info - Don't invoke 'print' in production code - lib\features\navigation\data\services\websocket_service.dart:39:7 - avoid_print
+   info - Don't invoke 'print' in production code - lib\features\navigation\data\services\websocket_service.dart:48:5 - avoid_print
+warning - Unused import: 'package:latlong2/latlong.dart' - lib\features\navigation\presentation\screens\driver_dashboard.dart:3:8 - unused_import
+   info - 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss - lib\features\navigation\presentation\widgets\dashboard_stats_panel.dart:31:32 - deprecated_member_use
+   info - 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss - lib\features\navigation\presentation\widgets\dashboard_stats_panel.dart:32:32 - deprecated_member_use
+   info - 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss - lib\features\navigation\presentation\widgets\green_wave_banner.dart:16:35 - deprecated_member_use
+  error - The name 'MyApp' isn't a class - test\widget_test.dart:16:35 - creation_with_non_type
+
