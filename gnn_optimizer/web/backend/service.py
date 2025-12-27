@@ -33,7 +33,7 @@ class OptimizationService:
             config_path=SimConfig.SUMO_CFG,
             net_path=SimConfig.NET_FILE,
             model_path=FileConfig.FINAL_MARL_MODEL_PATH,
-            use_gui=True # Set to False if you want headless for the server
+            use_gui=True 
         )
         self.engine.initialize_model()
         
@@ -81,30 +81,47 @@ class OptimizationService:
 
                     # NOTE: To keep code clean, we should refactor engine.py to have a .step() method 
                     # that returns stats. For now, we will perform a basic simulation step.
-                
+
                 # 2. SIMULATION STEP
                 self.engine.manager.step()
                 
                 # 3. DATA COLLECTION (For Dashboard)
                 snapshot = self.engine.manager.get_snapshot()
                 
-                # Calculate metrics for the dashboard
-                total_queue = sum(l['queue_length'] for l in snapshot['lanes'].values())
-                avg_speed = sum(l['avg_speed'] for l in snapshot['lanes'].values()) / len(snapshot['lanes'])
+                # AGGREGATE METRICS
+                lane_values = list(snapshot['lanes'].values())
+                
+                # A. Queue Length (Congestion)
+                total_queue = sum(l['queue_length'] for l in lane_values)
+                
+                # B. Network Speed (Proxy for Travel Time Efficiency)
+                # Higher Speed = Lower Travel Time
+                avg_speed = sum(l['avg_speed'] for l in lane_values) / len(lane_values) if lane_values else 0
+                
+                # C. CO2 Emissions (Environmental Impact)
+                # Sum of instantaneous emission (mg/s) from all lanes
+                total_co2 = sum(l['co2'] for l in lane_values)
+                
+                # D. Waiting Time (Delays)
+                # Sum of waiting time (seconds) for all vehicles in the network
+                total_waiting_time = sum(l['waiting_time'] for l in lane_values)
                 
                 # Emit Data to Frontend
-                # This sends a JSON packet to the React Dashboard
                 self.socketio.emit('traffic_update', {
                     'step': step,
                     'total_queue': total_queue,
                     'avg_speed': avg_speed,
-                    'intersections': snapshot['intersections'] # Phase info
+                    'total_co2': total_co2,               # <--- NEW
+                    'total_waiting_time': total_waiting_time, # <--- NEW
+                    'uncertainty': 0.0,
+                    'intersections': snapshot['intersections']
                 })
                 
                 step += 1
-                # Sleep slightly to prevent CPU hogging and allow the frontend to render
                 eventlet.sleep(0.1) 
 
         except Exception as e:
             print(f"❌ Service Error: {e}")
+            import traceback
+            traceback.print_exc()
             self.running = False
