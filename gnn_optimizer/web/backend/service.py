@@ -1,110 +1,93 @@
-import sys
-import os
-import threading
+import socketio
+import requests
 import time
-import eventlet
+import threading
 
-# --- PATH FIX ---
-# Allow importing from src
-current_dir = os.path.dirname(os.path.abspath(__file__))
-project_root = os.path.abspath(os.path.join(current_dir, "..", ".."))
-if project_root not in sys.path:
-    sys.path.append(project_root)
+MANAGER_API = "http://localhost:5000/api"
+MANAGER_WS = "http://localhost:5000"
 
-from src.config import SimConfig, FileConfig, TrainConfig
-from src.inference.engine import RealTimeInferenceEngine
-
-class OptimizationService:
-    def __init__(self, socketio):
-        self.socketio = socketio
-        self.engine = None
+class RemoteOptimizationService:
+    def __init__(self, server_socketio):
+        self.server_socketio = server_socketio 
+        # Standard client, force websocket transport to avoid polling timeouts
+        self.sio_client = socketio.Client(reconnection=True, reconnection_attempts=5)
         self.running = False
-        self.thread = None
+        
+        @self.sio_client.on('simulation_step')
+        def on_simulation_step(data):
+            self._process_and_forward(data)
+            
+        @self.sio_client.on('connect')
+        def on_connect():
+            print("✅ Connected to Simulation Manager Stream")
+
+        @self.sio_client.on('disconnect')
+        def on_disconnect():
+            print("⚠️ Disconnected from Simulation Manager")
 
     def start_simulation(self):
-        """Starts the SUMO + GNN Engine in a background thread."""
-        if self.running:
-            return {"status": "Already running"}
-
-        print("🔌 Booting up GNN Optimization Service...")
-        
-        # Initialize the Engine
-        self.engine = RealTimeInferenceEngine(
-            config_path=SimConfig.SUMO_CFG,
-            net_path=SimConfig.NET_FILE,
-            model_path=FileConfig.FINAL_MARL_MODEL_PATH,
-            use_gui=True # Set to False if you want headless for the server
-        )
-        self.engine.initialize_model()
-        
-        self.running = True
-        self.thread = self.socketio.start_background_task(target=self._run_loop)
-        return {"status": "Started"}
-
-    def stop_simulation(self):
-        """Stops the loop safely."""
-        self.running = False
-        if self.engine:
-            try:
-                self.engine.manager.close()
-            except:
-                pass
-        return {"status": "Stopped"}
-
-    def _run_loop(self):
-        """The main loop that steps the simulation and emits data."""
-        print("🚀 Traffic Optimization Loop Started!")
+        if self.running: return {"status": "Already running"}
         
         try:
-            step = 0
-            idx_to_id = {v: k for k, v in self.engine.graph_builder.tls_map.items()}
+            print("🚀 Remote Starting Simulation Manager...")
+            # try: requests.post(f"{MANAGER_API}/simulation/start")
+            # except: pass
             
-            # Action Interval logic from engine.py
-            ACTION_INTERVAL = 15
-            current_actions = {}
-
-            while self.running:
-                # 1. ACTION LOGIC
-                if step % ACTION_INTERVAL == 0:
-                    snapshot = self.engine.manager.get_snapshot()
-                    data = self.engine.graph_builder.create_hetero_data(snapshot)
-                    
-                    # Inference
-                    actions, _ = self.engine.get_uncertainty_prediction(data) if hasattr(self.engine, 'get_uncertainty_prediction') else (None, None)
-                    
-                    # Fallback to standard inference if get_uncertainty_prediction not available
-                    if actions is None:
-                        # ... (Copy standard inference logic here if needed or import)
-                        # For now, let's assume we just step the engine manager for simplicity
-                        # But ideally, you'd call a 'step_once' method on the engine.
-                        pass 
-
-                    # NOTE: To keep code clean, we should refactor engine.py to have a .step() method 
-                    # that returns stats. For now, we will perform a basic simulation step.
+            requests.post(f"{MANAGER_API}/optimizer/load", json={"type": "gnn"})
+            
+            # Connect only if not connected
+            if not self.sio_client.connected:
+                # Use threading to connect so we don't block the API response
+                threading.Thread(target=self._connect_socket).start()
                 
-                # 2. SIMULATION STEP
-                self.engine.manager.step()
-                
-                # 3. DATA COLLECTION (For Dashboard)
-                snapshot = self.engine.manager.get_snapshot()
-                
-                # Calculate metrics for the dashboard
-                total_queue = sum(l['queue_length'] for l in snapshot['lanes'].values())
-                avg_speed = sum(l['avg_speed'] for l in snapshot['lanes'].values()) / len(snapshot['lanes'])
-                
-                # Emit Data to Frontend
-                # This sends a JSON packet to the React Dashboard
-                self.socketio.emit('traffic_update', {
-                    'step': step,
-                    'total_queue': total_queue,
-                    'avg_speed': avg_speed,
-                    'intersections': snapshot['intersections'] # Phase info
-                })
-                
-                step += 1
-                # Sleep slightly to prevent CPU hogging and allow the frontend to render
-                eventlet.sleep(0.1) 
-
+            # requests.post(f"{MANAGER_API}/simulation/auto-step/start", json={"step_delay": 0.1})
+            
+            self.running = True
+            return {"status": "Remote Simulation Started"}
+            
         except Exception as e:
-            print(f"❌ Service Error: {e}")
+            print(f"❌ Connection Failed: {e}")
+            return {"status": "Error", "details": str(e)}
+
+    def _connect_socket(self):
+        """Helper to connect socket in background"""
+        try:
+            self.sio_client.connect(MANAGER_WS, transports=['websocket']) # Force Websocket
+        except Exception as e:
+            print(f"Socket connection error: {e}")
+
+    def stop_simulation(self):
+        """Stops the remote auto-stepping and unloads GNN"""
+        try:
+            # Option A: Stop the loop (Pause)
+            # requests.post(f"{MANAGER_API}/simulation/auto-step/stop")
+            
+            # Option B: Keep loop running, but detach GNN
+            requests.post(f"{MANAGER_API}/optimizer/unload") 
+            
             self.running = False
+            return {"status": "Stopped"}
+        except:
+            return {"status": "Error stopping"}
+
+    def _process_and_forward(self, raw_data):
+        """
+        Receives raw SUMO data from Manager, calculates GNN Dashboard metrics,
+        and forwards to GNN Frontend.
+        """
+        if not self.running: return
+
+        # 1. Calculate Metrics
+        lanes = raw_data.get('lanes', {})
+        total_queue = sum(l['queue_length'] for l in lanes.values())
+        avg_speed = 0
+        if len(lanes) > 0:
+            avg_speed = sum(l['avg_speed'] for l in lanes.values()) / len(lanes)
+
+        # 2. Emit to GNN Frontend (So the dashboard updates!)
+        self.server_socketio.emit('traffic_update', {
+            'step': raw_data['step'],
+            'total_queue': total_queue,
+            'avg_speed': avg_speed,
+            'intersections': raw_data['intersections']
+        })

@@ -1,17 +1,17 @@
 from flask import Flask, jsonify, request
 from flask_socketio import SocketIO
 from flask_cors import CORS
-from service import OptimizationService
-
+from service import RemoteOptimizationService # Import ONLY the remote service
+    
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'gnn_secret'
 CORS(app) # Allow React to connect
 
 # Initialize SocketIO
-socketio = SocketIO(app, cors_allowed_origins="*", async_mode='eventlet')
+socketio = SocketIO(app, cors_allowed_origins="*", async_mode='threading')
 
-# Initialize our Traffic Service
-traffic_service = OptimizationService(socketio)
+# Initialize our Remote Traffic Service     
+optimization_service = RemoteOptimizationService(socketio)
 
 @app.route('/')
 def index():
@@ -19,15 +19,11 @@ def index():
 
 @app.route('/api/start', methods=['POST'])
 def start():
-    """API Endpoint to start the simulation"""
-    result = traffic_service.start_simulation()
-    return jsonify(result)
+    return jsonify(optimization_service.start_simulation())
 
 @app.route('/api/stop', methods=['POST'])
 def stop():
-    """API Endpoint to stop the simulation"""
-    result = traffic_service.stop_simulation()
-    return jsonify(result)
+    return jsonify(optimization_service.stop_simulation())
 
 @socketio.on('connect')
 def handle_connect():
@@ -38,5 +34,6 @@ def handle_disconnect():
     print('❌ Client disconnected')
 
 if __name__ == '__main__':
-    print("🌍 Starting Web Server on port 5000...")
-    socketio.run(app, host='0.0.0.0', port=5000, debug=True)
+    print("🌍 Starting Web Server on port 5001...")
+    # Port must be 5001 to avoid conflict with Simulation Manager on 5000
+    socketio.run(app, host='0.0.0.0', port=5001, debug=True)

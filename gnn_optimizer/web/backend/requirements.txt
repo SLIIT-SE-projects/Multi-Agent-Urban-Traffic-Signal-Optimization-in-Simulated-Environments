@@ -5,3 +5,6 @@ eventlet
 python-socketio
 numpy
 torch
+requests
+python-socketio[client]
+websocket-client

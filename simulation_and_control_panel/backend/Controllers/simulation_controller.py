@@ -15,7 +15,8 @@ else:
 
 
 class SimulationController:
-    def __init__(self, config_file, use_gui=True, step_delay=0.1):
+    def __init__(self, config_file, socketio_instance=None, use_gui=True, step_delay=0.1):
+        self.socketio = socketio_instance
         self.config_file = config_file
         self.use_gui = use_gui
         self.default_step_delay = step_delay
@@ -131,6 +132,24 @@ class SimulationController:
         # 3. ADVANCE SUMO
         traci.simulationStep()
         self.current_step += 1
+
+        # 4. DATA BROADCAST (Optimized)
+        if self.socketio:
+            # Run broadcast in a separate lightweight thread to prevent blocking the sim loop
+            # Or just use the native emit which is async in 'threading' mode
+            try:
+                # Reuse snapshot logic efficiently
+                # Only capture if we didn't capture it for AI above
+                # (For simplicity, we capture again to ensure fresh data after the step)
+                snapshot = self._capture_snapshot_for_ai()
+                
+                self.socketio.emit('simulation_step', {
+                    'step': self.current_step,
+                    'lanes': snapshot['lanes'],
+                    'intersections': snapshot['intersections']
+                })
+            except Exception as e:
+                print(f"Socket Emit Error: {e}")
 
     def start_auto_stepping(self, step_delay=None):
         """Start automatic stepping in background"""
@@ -403,6 +422,13 @@ class SimulationController:
 
             except Exception as e:
                 pass
+
+    def unload_optimizer(self):
+        """Disable the currently loaded optimizer"""
+        self.optimizer = None
+        self.optimization_enabled = False
+        print("🔌 Optimizer Unloaded (Reverted to Default Control)")
+        return {"status": "success", "message": "Optimizer unloaded"}
     
     def pause(self):
         """Pause simulation"""

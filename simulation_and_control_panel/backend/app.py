@@ -5,10 +5,13 @@ from Controllers.scenario_controller import ScenarioController
 from Controllers.data_controller import DataController
 from Controllers.state_controller import StateController
 from config import config
+from flask_socketio import SocketIO
 import os
 
 app = Flask(__name__)
 CORS(app)  # Allow frontend to connect
+
+socketio = SocketIO(app, cors_allowed_origins="*", async_mode='threading')
 
 # CHANGE THIS to your actual config file!
 # CONFIG_FILE = os.path.join("..", "scenarios", "mapishara.sumo.cfg")
@@ -18,7 +21,8 @@ CONFIG_FILE = os.path.join("..", "scenarios", "grid3x3", "grid3x3.sumo.cfg")
 sim_controller = SimulationController(
     CONFIG_FILE, 
     use_gui=config.USE_GUI,
-    step_delay=config.STEP_DELAY
+    step_delay=config.STEP_DELAY,
+    socketio_instance=socketio
 )
 
 data_controller = DataController(sim_controller)
@@ -238,6 +242,11 @@ def toggle_optimizer():
     # Enable/Disable logic in controller
     pass
 
+@app.route('/api/optimizer/unload', methods=['POST'])
+def unload_optimizer():
+    result = sim_controller.unload_optimizer()
+    return jsonify(result)
+
 
 
 if __name__ == '__main__':
@@ -249,4 +258,4 @@ if __name__ == '__main__':
     print(f"Step delay: {config.STEP_DELAY}s")
     print(f"API will be available at: http://localhost:{config.PORT}")
     print("=" * 60)
-    app.run(debug=config.DEBUG, port=config.PORT, host=config.HOST)
+    socketio.run(app, debug=config.DEBUG, port=config.PORT, host=config.HOST)

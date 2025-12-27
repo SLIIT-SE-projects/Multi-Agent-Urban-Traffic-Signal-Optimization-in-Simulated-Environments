@@ -4,7 +4,7 @@ import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContai
 import { Activity, Car, Zap, Play, Square } from 'lucide-react';
 
 // Connect to Python Backend
-const socket = io('http://localhost:5000');
+const socket = io('http://localhost:5001');
 
 interface TrafficData {
   step: number;
@@ -17,7 +17,7 @@ interface TrafficResponse {
   step: number;
   total_queue: number;
   avg_speed: number;
-  intersections: Record<string, any>;
+  intersections: Record<string, string>;
 }
 
 function App() {
@@ -56,12 +56,12 @@ function App() {
   }, []);
 
   const handleStart = async () => {
-    await fetch('http://localhost:5000/api/start', { method: 'POST' });
+    await fetch('http://localhost:5001/api/start', { method: 'POST' });
     setIsRunning(true);
   };
 
   const handleStop = async () => {
-    await fetch('http://localhost:5000/api/stop', { method: 'POST' });
+    await fetch('http://localhost:5001/api/stop', { method: 'POST' });
     setIsRunning(false);
   };
 
