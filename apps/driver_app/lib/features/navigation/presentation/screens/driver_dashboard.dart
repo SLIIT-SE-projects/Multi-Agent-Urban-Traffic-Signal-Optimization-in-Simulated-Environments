@@ -7,6 +7,8 @@ import '../widgets/green_wave_banner.dart';
 import '../widgets/live_map.dart';
 import '../../../../core/constants/app_constants.dart';
 
+import '../../../../core/widgets/app_drawer.dart';
+
 class DriverDashboard extends StatefulWidget {
   const DriverDashboard({super.key});
 
@@ -45,6 +47,7 @@ class _DriverDashboardState extends State<DriverDashboard> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      drawer: const AppDrawer(currentRoute: 'dashboard'),
       // --- APP BAR ---
       appBar: AppBar(
         title: const Text("EVPS PRIORITY SYSTEM"),

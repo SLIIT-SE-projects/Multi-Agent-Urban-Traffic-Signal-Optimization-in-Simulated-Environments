@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../../../../core/widgets/app_drawer.dart';
+
 class DriverHomeScreen extends StatelessWidget {
   const DriverHomeScreen({super.key});
 
@@ -9,6 +11,7 @@ class DriverHomeScreen extends StatelessWidget {
       appBar: AppBar(
         title: const Text('Driver Home Screen'),
       ),
+      drawer: const AppDrawer(currentRoute: 'home'),
       body: const Center(
         child: Text('Welcome to Driver Home'),
       ),
