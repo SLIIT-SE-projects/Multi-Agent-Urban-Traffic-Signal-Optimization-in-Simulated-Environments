@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import '../../features/home/presentation/screens/driver_home_screen.dart';
+import '../../features/trip/presentation/screens/trip_setup_screen.dart';
 import '../../features/navigation/presentation/screens/driver_dashboard.dart';
 import '../../features/auth/presentation/screens/login_screen.dart';
 import '../../features/trip/presentation/screens/vehicle_select_screen.dart';
@@ -113,7 +113,7 @@ class AppDrawer extends StatelessWidget {
                         Navigator.pushReplacement(
                           context,
                           MaterialPageRoute(
-                              builder: (context) => const DriverHomeScreen()),
+                              builder: (context) => const TripSetupScreen()),
                         );
                       }
                     },

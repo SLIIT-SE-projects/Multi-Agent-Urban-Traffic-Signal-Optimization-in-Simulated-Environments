@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import '../../../../features/home/presentation/screens/driver_home_screen.dart';
+import '../../../../features/trip/presentation/screens/trip_setup_screen.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -24,7 +24,7 @@ class _LoginScreenState extends State<LoginScreen> {
     // Logic: Accept any email/password and navigate
     Navigator.of(context).pushReplacement(
       MaterialPageRoute(
-        builder: (context) => const DriverHomeScreen(),
+        builder: (context) => const TripSetupScreen(),
       ),
     );
   }
