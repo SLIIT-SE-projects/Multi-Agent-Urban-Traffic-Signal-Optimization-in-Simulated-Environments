@@ -52,7 +52,18 @@ class SumoManager:
                 "co2": traci.lane.getCO2Emission(lane_id),
                 "waiting_time": traci.lane.getWaitingTime(lane_id)
             }
-        return {"intersections": intersection_data, "lanes": lane_data}
+
+        # 3. Global Stats (NEW)
+        # Get number of vehicles that reached their destination in this step
+        arrived_vehicles = traci.simulation.getArrivedNumber()
+
+        return {
+            "intersections": intersection_data,
+            "lanes": lane_data,
+            "global": {
+                "arrived_vehicles": arrived_vehicles
+            }
+        }
 
     def _get_yellow_phase(self, tls_id, current_phase):
         try:
