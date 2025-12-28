@@ -71,23 +71,38 @@ class RemoteOptimizationService:
             return {"status": "Error stopping"}
 
     def _process_and_forward(self, raw_data):
-        """
-        Receives raw SUMO data from Manager, calculates GNN Dashboard metrics,
-        and forwards to GNN Frontend.
-        """
         if not self.running: return
 
-        # 1. Calculate Metrics
         lanes = raw_data.get('lanes', {})
-        total_queue = sum(l['queue_length'] for l in lanes.values())
-        avg_speed = 0
-        if len(lanes) > 0:
-            avg_speed = sum(l['avg_speed'] for l in lanes.values()) / len(lanes)
+        
+        # Safe aggregation
+        total_queue = 0
+        total_waiting = 0
+        total_co2 = 0
+        speed_sum = 0
+        lane_count = 0
 
-        # 2. Emit to GNN Frontend (So the dashboard updates!)
+        for l_data in lanes.values():
+            total_queue += l_data.get('queue_length', 0)
+            total_waiting += l_data.get('waiting_time', 0)
+            total_co2 += l_data.get('co2', 0)
+            speed_sum += l_data.get('avg_speed', 0)
+            lane_count += 1
+
+        avg_speed = (speed_sum / lane_count) if lane_count > 0 else 0
+        
+        # Throughput (from global or calculated)
+        # Check if 'global' exists in raw_data, otherwise default to 0
+        throughput = raw_data.get('global', {}).get('arrived_vehicles', 0)
+
+        # 2. Emit to GNN Frontend
+        # Ensure these keys match EXACTLY what your React 'useTrafficSocket' hook expects
         self.server_socketio.emit('traffic_update', {
-            'step': raw_data['step'],
+            'step': raw_data.get('step', 0),
             'total_queue': total_queue,
             'avg_speed': avg_speed,
-            'intersections': raw_data['intersections']
+            'total_co2': total_co2,
+            'total_waiting_time': total_waiting,
+            'throughput': throughput,
+            'intersections': raw_data.get('intersections', {})
         })

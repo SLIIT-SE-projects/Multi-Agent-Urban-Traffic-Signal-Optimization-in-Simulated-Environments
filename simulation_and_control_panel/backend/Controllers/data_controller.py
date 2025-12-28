@@ -202,5 +202,14 @@ class DataController:
                  "phase_index": traci.trafficlight.getPhase(tls_id), # Used for One-Hot Encoding
                  "time_to_switch": time_to_switch                    # Used as explicit feature
              }
+
+        # Get number of vehicles that reached their destination in this step
+        arrived_vehicles = traci.simulation.getArrivedNumber()
              
-        return {"lanes": lanes, "intersections": intersections}
+        return {
+            "intersections": intersections,
+            "lanes": lanes,
+            "global": {
+                "arrived_vehicles": arrived_vehicles
+            }
+        }
