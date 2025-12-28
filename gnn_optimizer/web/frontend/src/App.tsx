@@ -1,19 +1,18 @@
 import { useEffect, useState } from 'react';
 import { io } from 'socket.io-client';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
-import { Activity, Car, Zap, Play, Square, Clock, Leaf, AlertTriangle } from 'lucide-react';
+import { Activity, Car, Zap, Play, Square, Clock, Leaf } from 'lucide-react';
 
 // Connect to Python Backend
 const socket = io('http://localhost:5000');
 
-// 1. Update Types to include new metrics
+// 1. Update Types (Removed Uncertainty)
 interface TrafficData {
   step: number;
   total_queue: number;
   avg_speed: number;
   total_co2: number;
   total_waiting_time: number;
-  uncertainty: number;
 }
 
 interface TrafficResponse {
@@ -22,7 +21,6 @@ interface TrafficResponse {
   avg_speed: number;
   total_co2: number;
   total_waiting_time: number;
-  uncertainty: number;
   intersections: Record<string, string>;
 }
 
@@ -31,14 +29,13 @@ function App() {
   const [isRunning, setIsRunning] = useState(false);
   const [dataHistory, setDataHistory] = useState<TrafficData[]>([]);
   
-  // Initialize with zeros
+  // Initialize with zeros (Removed Uncertainty)
   const [currentMetrics, setCurrentMetrics] = useState<TrafficData>({ 
     step: 0, 
     total_queue: 0, 
     avg_speed: 0,
     total_co2: 0,
-    total_waiting_time: 0,
-    uncertainty: 0
+    total_waiting_time: 0
   });
 
   useEffect(() => {
@@ -46,14 +43,13 @@ function App() {
     socket.on('disconnect', () => setIsConnected(false));
 
     socket.on('traffic_update', (data: TrafficResponse) => {
-      // 2. Parse new values from Backend
+      // 2. Parse new values from Backend (Removed Uncertainty)
       const newData = {
         step: data.step,
         total_queue: parseFloat(data.total_queue.toFixed(2)),
         avg_speed: parseFloat(data.avg_speed.toFixed(2)),
         total_co2: parseFloat((data.total_co2 / 1000).toFixed(2)), // Convert mg to Grams for readability
-        total_waiting_time: parseFloat(data.total_waiting_time.toFixed(2)),
-        uncertainty: parseFloat(data.uncertainty.toFixed(4))
+        total_waiting_time: parseFloat(data.total_waiting_time.toFixed(2))
       };
 
       setCurrentMetrics(newData);
@@ -125,7 +121,7 @@ function App() {
         </div>
       </div>
 
-      {/* 3. Metric Cards Grid */}
+      {/* 3. Metric Cards Grid (Removed Uncertainty Card) */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
         <MetricCard 
           title="Total Queue Length" 
@@ -150,12 +146,6 @@ function App() {
           value={currentMetrics.total_co2} 
           unit="g/s" 
           icon={<Leaf className="text-green-400" />} 
-        />
-        <MetricCard 
-          title="AI Uncertainty (Variance)" 
-          value={currentMetrics.uncertainty} 
-          unit="σ²" 
-          icon={<AlertTriangle className={currentMetrics.uncertainty > 0.1 ? "text-orange-500" : "text-emerald-400"} />} 
         />
         <MetricCard 
           title="Simulation Step" 
