@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../../features/home/presentation/screens/driver_home_screen.dart';
 import '../../features/navigation/presentation/screens/driver_dashboard.dart';
 import '../../features/auth/presentation/screens/login_screen.dart';
+import '../../features/trip/presentation/screens/vehicle_select_screen.dart';
 
 class AppDrawer extends StatelessWidget {
   final String currentRoute;
@@ -142,7 +143,15 @@ class AppDrawer extends StatelessWidget {
                     text: 'Vehicle Selection',
                     route: 'vehicle_selection',
                     onTap: () {
-                      Navigator.pop(context);
+                      if (currentRoute == 'vehicle_selection') {
+                        Navigator.pop(context);
+                      } else {
+                        Navigator.pushReplacement(
+                          context,
+                          MaterialPageRoute(
+                              builder: (context) => const VehicleSelectScreen()),
+                        );
+                      }
                     },
                   ),
                   const SizedBox(height: 8),
