@@ -105,15 +105,24 @@ class OptimizationService:
                 # D. Waiting Time (Delays)
                 # Sum of waiting time (seconds) for all vehicles in the network
                 total_waiting_time = sum(l['waiting_time'] for l in lane_values)
+
+                # B. NEW METRICS
+                # Occupancy: Average % of lane occupied across the network
+                avg_occupancy = sum(l['occupancy'] for l in lane_values) / len(lane_values) if lane_values else 0
+
+                # Throughput: We send the instantaneous arrival count
+                # The frontend can accumulate this or show it as a rate
+                arrived_vehicles = snapshot['global']['arrived_vehicles']
                 
                 # Emit Data to Frontend
                 self.socketio.emit('traffic_update', {
                     'step': step,
                     'total_queue': total_queue,
                     'avg_speed': avg_speed,
-                    'total_co2': total_co2,               # <--- NEW
-                    'total_waiting_time': total_waiting_time, # <--- NEW
-                    'uncertainty': 0.0,
+                    'total_co2': total_co2,
+                    'total_waiting_time': total_waiting_time, 
+                    'avg_occupancy': avg_occupancy,
+                    'throughput': arrived_vehicles,
                     'intersections': snapshot['intersections']
                 })
                 
