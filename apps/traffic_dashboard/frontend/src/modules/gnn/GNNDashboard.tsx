@@ -1,5 +1,4 @@
-import React, { useEffect, useState } from 'react';
-import { io } from 'socket.io-client';
+import React, { useEffect, useState, useRef } from 'react';
 import { 
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer 
 } from 'recharts';
@@ -18,43 +17,84 @@ interface TrafficData {
   cumulative_throughput: number;
 }
 
-// Simulated Hook (Replace with your real socket logic)
 const useTrafficSocket = () => {
   const [isConnected, setIsConnected] = useState(false);
   const [dataHistory, setDataHistory] = useState<TrafficData[]>([]);
   const [currentMetrics, setCurrentMetrics] = useState({ 
     step: 0, total_queue: 0, avg_speed: 0, total_co2: 0, total_waiting_time: 0, cumulative_throughput: 0
   });
+  
+  // Use a ref to prevent multiple socket connections in React Strict Mode
+  const ws = useRef<WebSocket | null>(null);
 
   useEffect(() => {
-    // Ensure this URL matches your backend
-    const socket = io('http://localhost:5001');
-    socket.on('connect', () => setIsConnected(true));
-    socket.on('disconnect', () => setIsConnected(false));
-    
-    socket.on('traffic_update', (data: any) => {
-       setCurrentMetrics(prev => ({
-         ...prev,
-         ...data,
-         cumulative_throughput: prev.cumulative_throughput + (data.throughput || 0)
-       }));
-       
-       setDataHistory(prev => {
-         const newH = [...prev, { ...data, cumulative_throughput: 0 }];
-         return newH.length > 60 ? newH.slice(newH.length - 60) : newH;
-       });
-    });
+    // Connect to the Dashboard API (BFF) not the Simulation directly
+    const socket = new WebSocket('ws://localhost:8000/ws');
+    ws.current = socket;
 
-    return () => { socket.disconnect(); };
+    socket.onopen = () => {
+      console.log(' Connected to Dashboard API');
+      setIsConnected(true);
+    };
+
+    socket.onclose = () => {
+      console.log(' Disconnected from Dashboard API');
+      setIsConnected(false);
+    };
+
+    socket.onmessage = (event) => {
+      try {
+        const response = JSON.parse(event.data);
+        
+        if (response.channel === 'gnn_metrics') {
+          const data = response.data;
+          
+          setCurrentMetrics(prev => ({
+            ...prev,
+            ...data,
+            cumulative_throughput: prev.cumulative_throughput + (data.throughput || 0)
+          }));
+          
+          setDataHistory(prev => {
+            const newH = [...prev, { ...data, cumulative_throughput: 0 }];
+            // Keep last 60 data points for the chart
+            return newH.length > 60 ? newH.slice(newH.length - 60) : newH;
+          });
+        }
+      } catch (err) {
+        console.error("Error parsing websocket message:", err);
+      }
+    };
+
+    return () => {
+      socket.close();
+    };
   }, []);
 
-  const handleStart = async () => fetch('http://localhost:5001/api/start', { method: 'POST' });
-  const handleStop = async () => fetch('http://localhost:5001/api/stop', { method: 'POST' });
+  const sendCommand = async (action: 'start' | 'stop') => {
+    try {
+      await fetch('http://localhost:8000/api/control', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          action: action, 
+          model: 'gnn' 
+        })
+      });
+    } catch (e) {
+      console.error(`Failed to send ${action} command`, e);
+    }
+  };
 
-  return { isConnected, currentMetrics, dataHistory, handleStart, handleStop };
+  return { 
+    isConnected, 
+    currentMetrics, 
+    dataHistory, 
+    handleStart: () => sendCommand('start'), 
+    handleStop: () => sendCommand('stop') 
+  };
 };
 
-// --- 2. SHARED UI COMPONENTS ---
 
 const StatCard = ({ title, value, unit, icon, color }: any) => (
   <div className="relative overflow-hidden bg-slate-900 border border-slate-800 rounded-xl p-5 group hover:border-slate-700 transition-all">
@@ -66,7 +106,7 @@ const StatCard = ({ title, value, unit, icon, color }: any) => (
     <div>
       <p className="text-slate-400 text-xs font-medium uppercase tracking-wider">{title}</p>
       <h4 className="text-2xl font-bold text-white mt-1">
-        {value} <span className="text-sm text-slate-500 font-normal ml-1">{unit}</span>
+        {typeof value === 'number' ? value.toFixed(1) : value} <span className="text-sm text-slate-500 font-normal ml-1">{unit}</span>
       </h4>
     </div>
   </div>
@@ -90,17 +130,29 @@ const ChartCard = ({ title, data, dataKey, color, fillId, height = "h-80" }: any
           <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" vertical={false} />
           <XAxis dataKey="step" hide />
           <YAxis hide domain={['auto', 'auto']} />
-          <Tooltip contentStyle={{ backgroundColor: '#0f172a', borderColor: '#334155' }} />
-          <Area type="monotone" dataKey={dataKey} stroke="currentColor" strokeWidth={2} fill={`url(#${fillId})`} className={color} />
+          <Tooltip 
+            contentStyle={{ backgroundColor: '#0f172a', borderColor: '#334155', borderRadius: '8px' }}
+            itemStyle={{ color: '#e2e8f0' }}
+            labelStyle={{ color: '#94a3b8' }}
+          />
+          <Area 
+            type="monotone" 
+            dataKey={dataKey} 
+            stroke="currentColor" 
+            strokeWidth={2} 
+            fill={`url(#${fillId})`} 
+            className={color} 
+            isAnimationActive={false} // Improves performance for real-time data
+          />
         </AreaChart>
       </ResponsiveContainer>
     </div>
   </div>
 );
 
-// --- 3. SUB-FEATURE: GNN CONFIGURATION TAB ---
+// --- 4. SUB-FEATURE: GNN CONFIGURATION TAB ---
 const GNNConfigTab = () => (
-  <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 max-w-4xl">
+  <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 max-w-4xl animate-in fade-in slide-in-from-bottom-4 duration-500">
     <div className="space-y-6">
       <div className="bg-slate-900 p-6 rounded-xl border border-slate-800">
         <h3 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
@@ -110,7 +162,7 @@ const GNNConfigTab = () => (
           {['Learning Rate', 'Discount Factor (Gamma)', 'Batch Size', 'PPO Clip Range'].map((label) => (
             <div key={label} className="grid grid-cols-3 items-center gap-4">
               <label className="text-slate-400 text-sm col-span-1">{label}</label>
-              <input type="text" defaultValue="0.0003" className="col-span-2 bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-sm text-slate-200 focus:border-indigo-500 focus:outline-none" />
+              <input type="text" defaultValue="0.0003" className="col-span-2 bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-sm text-slate-200 focus:border-indigo-500 focus:outline-none transition-colors" />
             </div>
           ))}
         </div>
@@ -143,7 +195,7 @@ const GNNConfigTab = () => (
   </div>
 );
 
-// --- 4. MAIN FEATURE: GNN MONITOR TAB (The Dashboard) ---
+// 5. MAIN FEATURE: GNN MONITOR TAB
 const GNNMonitorTab = ({ socketData }: any) => {
   const { currentMetrics, dataHistory } = socketData;
   return (
@@ -174,17 +226,21 @@ const GNNMonitorTab = ({ socketData }: any) => {
   );
 };
 
-// --- 5. EXPORTED COMPONENT ---
+// 6. EXPORTED COMPONENT
 export default function GNNDashboard() {
   // Inner Tab State for GNN Optimizer
   const [activeSubTab, setActiveSubTab] = useState('monitor');
   const socketData = useTrafficSocket();
   const [isRunning, setIsRunning] = useState(false);
 
-  const toggleSim = () => {
-    if(isRunning) socketData.handleStop();
-    else socketData.handleStart();
-    setIsRunning(!isRunning);
+  const toggleSim = async () => {
+    if (isRunning) {
+      await socketData.handleStop();
+      setIsRunning(false);
+    } else {
+      await socketData.handleStart();
+      setIsRunning(true);
+    }
   }
 
   return (
@@ -192,16 +248,23 @@ export default function GNNDashboard() {
       {/* Page Header (Local to this module) */}
       <div className="flex justify-between items-center mb-6">
         <div>
-          <h1 className="text-2xl font-bold text-white">GNN Optimizer</h1>
+          <h1 className="text-2xl font-bold text-white flex items-center gap-2">
+            GNN Optimizer
+            <span className={`text-xs px-2 py-0.5 rounded-full border ${socketData.isConnected ? 'border-emerald-500/50 text-emerald-400 bg-emerald-500/10' : 'border-rose-500/50 text-rose-400 bg-rose-500/10'}`}>
+              {socketData.isConnected ? 'Online' : 'Offline'}
+            </span>
+          </h1>
           <p className="text-slate-400 text-sm">Graph Neural Network Model Inference & Control</p>
         </div>
         <button 
           onClick={toggleSim}
-          className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-all ${
-            isRunning ? 'bg-rose-500/10 text-rose-400 border border-rose-500/50' : 'bg-indigo-600 text-white hover:bg-indigo-500'
+          className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-all shadow-lg ${
+            isRunning 
+              ? 'bg-rose-500/10 text-rose-400 border border-rose-500/50 hover:bg-rose-500/20' 
+              : 'bg-indigo-600 text-white hover:bg-indigo-500 shadow-indigo-500/20'
           }`}
         >
-          {isRunning ? <><Square size={16}/> Stop Agent</> : <><Play size={16}/> Start Agent</>}
+          {isRunning ? <><Square size={16} fill="currentColor"/> Stop Agent</> : <><Play size={16} fill="currentColor"/> Start Agent</>}
         </button>
       </div>
 
@@ -227,11 +290,11 @@ export default function GNNDashboard() {
       </div>
 
       {/* Tab Content Render */}
-      <div className="flex-1 overflow-y-auto pr-2">
+      <div className="flex-1 overflow-y-auto pr-2 scrollbar-thin scrollbar-thumb-slate-800 scrollbar-track-transparent">
         {activeSubTab === 'monitor' && <GNNMonitorTab socketData={socketData} />}
         {activeSubTab === 'config' && <GNNConfigTab />}
         {activeSubTab === 'logs' && (
-          <div className="text-slate-500 flex flex-col items-center justify-center h-64 border-2 border-dashed border-slate-800 rounded-xl">
+          <div className="text-slate-500 flex flex-col items-center justify-center h-64 border-2 border-dashed border-slate-800 rounded-xl bg-slate-900/50">
             <FileText size={48} className="mb-4 opacity-50"/>
             <p>Training logs and tensorboard integration would appear here.</p>
           </div>

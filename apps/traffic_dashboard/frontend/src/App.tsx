@@ -36,7 +36,6 @@ const Sidebar = () => (
 
       <SidebarItem to="/overview" icon={<LayoutDashboard size={18} />} label="System Overview" />
       <SidebarItem to="/gnn" icon={<Cpu size={18} />} label="GNN Optimizer" />
-      <SidebarItem to="/map" icon={<MapIcon size={18} />} label="SUMO Map View" />
       <SidebarItem to="/mpc" icon={<Activity size={18} />} label="MPC Control" />
 
       <p className="px-3 text-xs font-semibold text-slate-500 uppercase tracking-wider mt-8 mb-2">
@@ -118,12 +117,6 @@ export default function App() {
                   It should only render the content part.
               */}
               <Route path="/gnn/*" element={<GNNDashboard />} />
-              
-              <Route path="/map" element={
-                <div className="p-10 border-2 border-dashed border-slate-800 rounded-2xl bg-slate-900/20 text-center">
-                   <h1 className="text-2xl font-bold text-white">SUMO Map View</h1>
-                </div>
-              } />
               
               <Route path="/mpc" element={
                  <div className="p-10 border-2 border-dashed border-slate-800 rounded-2xl bg-slate-900/20 text-center">
