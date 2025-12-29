@@ -3,6 +3,7 @@ import '../../features/trip/presentation/screens/trip_setup_screen.dart';
 import '../../features/navigation/presentation/screens/driver_dashboard.dart';
 import '../../features/auth/presentation/screens/login_screen.dart';
 import '../../features/trip/presentation/screens/vehicle_select_screen.dart';
+import '../../features/profile/presentation/screens/profile_screen.dart';
 
 class AppDrawer extends StatelessWidget {
   final String currentRoute;
@@ -161,7 +162,15 @@ class AppDrawer extends StatelessWidget {
                     text: 'Profile',
                     route: 'profile',
                     onTap: () {
-                      Navigator.pop(context);
+                      if (currentRoute == 'profile') {
+                        Navigator.pop(context);
+                      } else {
+                        Navigator.pushReplacement(
+                          context,
+                          MaterialPageRoute(
+                              builder: (context) => const ProfileScreen()),
+                        );
+                      }
                     },
                   ),
                   
