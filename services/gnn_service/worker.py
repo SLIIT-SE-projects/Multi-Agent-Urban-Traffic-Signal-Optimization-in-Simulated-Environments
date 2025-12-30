@@ -7,11 +7,13 @@ import redis as redis_sync
 
 # 1. PATH SETUP
 current_dir = os.path.dirname(os.path.abspath(__file__))
+services_dir = os.path.dirname(current_dir)
+
 # Add parent directory to path to import config
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.append(services_dir)
 from config import Config
 
-backend_path = os.path.join(current_dir, Config.BACKEND_PATH)
+backend_path = os.path.join(services_dir, Config.BACKEND_PATH)
 sys.path.append(backend_path)
 
 from service import RemoteOptimizationService

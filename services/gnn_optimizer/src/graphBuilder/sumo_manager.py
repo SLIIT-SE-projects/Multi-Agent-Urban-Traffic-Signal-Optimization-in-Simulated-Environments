@@ -10,9 +10,9 @@ class SumoManager:
         self.use_gui = use_gui
         self.connection = None
         self.green_phases = {}
-        self.pending_switches = {} 
+        self.pending_switches = {}
         self.yellow_timers = {}
-        self.YELLOW_DURATION = 3 
+        self.YELLOW_DURATION = 3
 
         if 'SUMO_HOME' not in os.environ:
             print("WARNING: SUMO_HOME environment variable is not set.")

@@ -6,7 +6,7 @@ import torch
 # 1. PATH FIX: Register 'gnn_optimizer' directory
 # ==============================================================================
 current_dir = os.path.dirname(os.path.abspath(__file__))
-gnn_project_path = os.path.abspath(os.path.join(current_dir, "../../../gnn_optimizer"))
+gnn_project_path = os.path.abspath(os.path.join(current_dir, "../../../services/gnn_optimizer"))
 
 if gnn_project_path not in sys.path:
     sys.path.append(gnn_project_path)

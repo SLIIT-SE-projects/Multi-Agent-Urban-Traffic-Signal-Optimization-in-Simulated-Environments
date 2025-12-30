@@ -25,7 +25,7 @@ def test_gnn_loading():
     common_root = os.path.abspath(os.path.join(project_root, ".."))
     
     # Construct absolute paths to the GNN files
-    gnn_folder = os.path.join(common_root, "gnn_optimizer")
+    gnn_folder = os.path.join(common_root, "services", "gnn_optimizer")
     
     MODEL_PATH = os.path.join(gnn_folder, "experiments", "saved_models", "final_marl_model.pth")
     NET_PATH = os.path.join(gnn_folder, "simulation", "network.net.xml")

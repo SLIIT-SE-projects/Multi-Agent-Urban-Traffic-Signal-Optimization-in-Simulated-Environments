@@ -25,7 +25,7 @@ class Config:
     REDIS_HOST = os.getenv('REDIS_HOST', 'localhost')
     REDIS_PORT = int(os.getenv('REDIS_PORT', 6379))
     DASHBOARD_CORS_ORIGIN = os.getenv('DASHBOARD_CORS_ORIGIN', 'http://localhost:5173')
-    BACKEND_PATH = os.getenv('BACKEND_PATH', '../../gnn_optimizer/web/backend')
+    BACKEND_PATH = os.getenv('BACKEND_PATH', 'gnn_optimizer/web/backend')
 
     MANAGER_API = os.getenv('MANAGER_API', 'http://localhost:5000/api')
     MANAGER_WS = os.getenv('MANAGER_WS', 'http://localhost:5000')
