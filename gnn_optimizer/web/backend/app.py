@@ -2,9 +2,10 @@ from flask import Flask, jsonify, request
 from flask_socketio import SocketIO
 from flask_cors import CORS
 from service import RemoteOptimizationService # Import ONLY the remote service
+from config import Config
     
 app = Flask(__name__)
-app.config['SECRET_KEY'] = 'gnn_secret'
+app.config['SECRET_KEY'] = Config.SECRET_KEY
 CORS(app) # Allow React to connect
 
 # Initialize SocketIO
@@ -34,6 +35,6 @@ def handle_disconnect():
     print('❌ Client disconnected')
 
 if __name__ == '__main__':
-    print("🌍 Starting Web Server on port 5001...")
+    print(f"🌍 Starting Web Server on port {Config.PORT}...")
     # Port must be 5001 to avoid conflict with Simulation Manager on 5000
-    socketio.run(app, host='0.0.0.0', port=5001, debug=True)
+    socketio.run(app, host=Config.HOST, port=Config.PORT, debug=True)

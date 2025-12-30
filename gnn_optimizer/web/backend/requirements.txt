@@ -8,3 +8,4 @@ torch
 requests
 python-socketio[client]
 websocket-client
+python-dotenv

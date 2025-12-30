@@ -7,14 +7,18 @@ import redis as redis_sync
 
 # 1. PATH SETUP
 current_dir = os.path.dirname(os.path.abspath(__file__))
-backend_path = os.path.join(current_dir, '../../gnn_optimizer/web/backend')
+# Add parent directory to path to import config
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from config import Config
+
+backend_path = os.path.join(current_dir, Config.BACKEND_PATH)
 sys.path.append(backend_path)
 
 from service import RemoteOptimizationService
 
 # 2. ADAPTER CLASS
 class RedisSocketAdapter:
-    def __init__(self, host='localhost', port=6379):
+    def __init__(self, host=Config.REDIS_HOST, port=Config.REDIS_PORT):
         self.r = redis_sync.Redis(host=host, port=port, decode_responses=True)
 
     def emit(self, event, data):
@@ -36,7 +40,7 @@ async def run_gnn_cycle():
     service = RemoteOptimizationService(server_socketio=redis_adapter)
     
     # C. Setup Async Redis for Control Listening
-    control_redis = redis.Redis(host='localhost', port=6379, decode_responses=True)
+    control_redis = redis.Redis(host=Config.REDIS_HOST, port=Config.REDIS_PORT, decode_responses=True)
     pubsub = control_redis.pubsub()
     await pubsub.subscribe("control_gnn")
 

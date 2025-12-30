@@ -2,9 +2,10 @@ import socketio
 import requests
 import time
 import threading
+from config import Config
 
-MANAGER_API = "http://localhost:5000/api"
-MANAGER_WS = "http://localhost:5000"
+MANAGER_API = Config.MANAGER_API
+MANAGER_WS = Config.MANAGER_WS
 
 class RemoteOptimizationService:
     def __init__(self, server_socketio):

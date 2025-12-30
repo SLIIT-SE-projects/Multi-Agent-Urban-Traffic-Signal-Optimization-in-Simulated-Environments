@@ -1,29 +1,39 @@
 # services/dashboard_api/main.py
-import asyncio
 import json
 import redis.asyncio as redis
-from fastapi import FastAPI, WebSocket, APIRouter
+from fastapi import FastAPI, WebSocket
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
+# Import Config (assuming running from root directory)
+# If this fails, you may need the sys.path append trick again
+from services.config import Config
+
+# 1. INITIALIZE APP
 app = FastAPI()
 
-# 1. Allow React Frontend to connect
+# 2. SETUP CORS (Important for your frontend to talk to this)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173"],
+    allow_origins=[Config.DASHBOARD_CORS_ORIGIN, "*"], # Allow all for dev
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# 2. Redis Connection
-redis_client = redis.Redis(host='localhost', port=6379, decode_responses=True)
+# 3. SETUP REDIS CONNECTION
+# We create the pool here so we can reuse it
+redis_pool = redis.ConnectionPool(
+    host=Config.REDIS_HOST, 
+    port=Config.REDIS_PORT, 
+    decode_responses=True
+)
+redis_client = redis.Redis(connection_pool=redis_pool)
 
-# 3. HTTP Endpoints
+# 4. DEFINE DATA MODEL
 class Command(BaseModel):
     action: str
-    model: str
+    model: str  # e.g., "gnn" or "mpc"
 
 @app.post("/api/control")
 async def send_command(cmd: Command):

@@ -7,6 +7,7 @@ import {
   Cpu, Sliders, FileText
 } from 'lucide-react';
 
+import { WS_BASE_URL, ENDPOINTS } from '../../config';
 
 interface TrafficData {
   step: number;
@@ -24,12 +25,11 @@ const useTrafficSocket = () => {
     step: 0, total_queue: 0, avg_speed: 0, total_co2: 0, total_waiting_time: 0, cumulative_throughput: 0
   });
   
-  // Use a ref to prevent multiple socket connections in React Strict Mode
   const ws = useRef<WebSocket | null>(null);
 
   useEffect(() => {
-    // Connect to the Dashboard API (BFF) not the Simulation directly
-    const socket = new WebSocket('ws://localhost:8000/ws');
+    // UPDATED: Using constant from config
+    const socket = new WebSocket(WS_BASE_URL);
     ws.current = socket;
 
     socket.onopen = () => {
@@ -57,7 +57,6 @@ const useTrafficSocket = () => {
           
           setDataHistory(prev => {
             const newH = [...prev, { ...data, cumulative_throughput: 0 }];
-            // Keep last 60 data points for the chart
             return newH.length > 60 ? newH.slice(newH.length - 60) : newH;
           });
         }
@@ -73,7 +72,8 @@ const useTrafficSocket = () => {
 
   const sendCommand = async (action: 'start' | 'stop') => {
     try {
-      await fetch('http://localhost:8000/api/control', {
+      // UPDATED: Using constant from config
+      await fetch(ENDPOINTS.CONTROL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
@@ -94,7 +94,6 @@ const useTrafficSocket = () => {
     handleStop: () => sendCommand('stop') 
   };
 };
-
 
 const StatCard = ({ title, value, unit, icon, color }: any) => (
   <div className="relative overflow-hidden bg-slate-900 border border-slate-800 rounded-xl p-5 group hover:border-slate-700 transition-all">
@@ -142,7 +141,7 @@ const ChartCard = ({ title, data, dataKey, color, fillId, height = "h-80" }: any
             strokeWidth={2} 
             fill={`url(#${fillId})`} 
             className={color} 
-            isAnimationActive={false} // Improves performance for real-time data
+            isAnimationActive={false} 
           />
         </AreaChart>
       </ResponsiveContainer>
@@ -150,7 +149,6 @@ const ChartCard = ({ title, data, dataKey, color, fillId, height = "h-80" }: any
   </div>
 );
 
-// --- 4. SUB-FEATURE: GNN CONFIGURATION TAB ---
 const GNNConfigTab = () => (
   <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 max-w-4xl animate-in fade-in slide-in-from-bottom-4 duration-500">
     <div className="space-y-6">
@@ -195,12 +193,10 @@ const GNNConfigTab = () => (
   </div>
 );
 
-// 5. MAIN FEATURE: GNN MONITOR TAB
 const GNNMonitorTab = ({ socketData }: any) => {
   const { currentMetrics, dataHistory } = socketData;
   return (
     <div className="space-y-6 animate-in fade-in duration-500">
-      {/* KPI Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
         <StatCard title="Avg Queue" value={currentMetrics.total_queue} unit="veh" icon={<Car />} color="text-blue-500" />
         <StatCard title="Avg Speed" value={currentMetrics.avg_speed} unit="m/s" icon={<Zap />} color="text-amber-400" />
@@ -208,7 +204,6 @@ const GNNMonitorTab = ({ socketData }: any) => {
         <StatCard title="Throughput" value={currentMetrics.cumulative_throughput} unit="veh" icon={<Activity />} color="text-purple-500" />
       </div>
 
-      {/* Main Charts */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <ChartCard title="Queue Length (Congestion)" data={dataHistory} dataKey="total_queue" color="text-blue-500" fillId="qGrad" />
         <ChartCard title="Network Speed Flow" data={dataHistory} dataKey="avg_speed" color="text-amber-400" fillId="sGrad" />
@@ -226,9 +221,7 @@ const GNNMonitorTab = ({ socketData }: any) => {
   );
 };
 
-// 6. EXPORTED COMPONENT
 export default function GNNDashboard() {
-  // Inner Tab State for GNN Optimizer
   const [activeSubTab, setActiveSubTab] = useState('monitor');
   const socketData = useTrafficSocket();
   const [isRunning, setIsRunning] = useState(false);
@@ -245,7 +238,6 @@ export default function GNNDashboard() {
 
   return (
     <div className="h-full flex flex-col">
-      {/* Page Header (Local to this module) */}
       <div className="flex justify-between items-center mb-6">
         <div>
           <h1 className="text-2xl font-bold text-white flex items-center gap-2">
@@ -268,7 +260,6 @@ export default function GNNDashboard() {
         </button>
       </div>
 
-      {/* Internal Tabs Navigation */}
       <div className="flex border-b border-slate-800 mb-6">
         {[
           { id: 'monitor', label: 'Real-time Monitor', icon: Activity },
@@ -289,7 +280,6 @@ export default function GNNDashboard() {
         ))}
       </div>
 
-      {/* Tab Content Render */}
       <div className="flex-1 overflow-y-auto pr-2 scrollbar-thin scrollbar-thumb-slate-800 scrollbar-track-transparent">
         {activeSubTab === 'monitor' && <GNNMonitorTab socketData={socketData} />}
         {activeSubTab === 'config' && <GNNConfigTab />}
