@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:latlong2/latlong.dart';
 import '../../../../core/widgets/app_drawer.dart';
+import '../../../../core/widgets/custom_floating_app_bar.dart';
 import '../../../navigation/presentation/screens/driver_dashboard.dart';
 import 'location_picker_screen.dart';
 
@@ -52,28 +53,29 @@ class _TripSetupScreenState extends State<TripSetupScreen> {
     final primaryColor = theme.primaryColor;
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Setup Mission'),
-        centerTitle: true,
-        backgroundColor: Colors.white,
-        foregroundColor: Colors.black,
-        elevation: 0,
-      ),
+      extendBodyBehindAppBar: true,
       drawer: const AppDrawer(currentRoute: 'home'),
-      body: Container(
-        height: double.infinity,
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: [
-              Colors.white,
-              Colors.grey[50]!,
-            ],
-          ),
-        ),
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(24.0),
+      body: Stack(
+        children: [
+          Container(
+            height: double.infinity,
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [
+                  Colors.white,
+                  Colors.grey[50]!,
+                ],
+              ),
+            ),
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.only(
+                top: 100, // Space for the header
+                left: 24,
+                right: 24,
+                bottom: 24,
+              ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
@@ -207,6 +209,20 @@ class _TripSetupScreenState extends State<TripSetupScreen> {
             ],
           ),
         ),
+          ),
+          // FLOATING HEADER
+          const Positioned(
+            top: 0,
+            left: 0,
+            right: 0,
+            child: CustomFloatingAppBar(
+              title: "SETUP MISSION",
+              titleColor: Colors.black, // Since background is white
+              showGradient: false, // Clean look on white
+              showBack: true,
+            ),
+          ),
+        ],
       ),
     );
   }

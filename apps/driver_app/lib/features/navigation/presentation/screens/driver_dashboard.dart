@@ -8,6 +8,7 @@ import '../widgets/live_map.dart';
 import '../../../../core/constants/app_constants.dart';
 
 import '../../../../core/widgets/app_drawer.dart';
+import '../../../../core/widgets/custom_floating_app_bar.dart';
 
 class DriverDashboard extends StatefulWidget {
   const DriverDashboard({super.key});
@@ -47,71 +48,94 @@ class _DriverDashboardState extends State<DriverDashboard> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      extendBodyBehindAppBar: true,
       drawer: const AppDrawer(currentRoute: 'dashboard'),
-      // --- APP BAR ---
-      appBar: AppBar(
-        title: const Text("EVPS PRIORITY SYSTEM"),
-        elevation: 0,
-        actions: [
-          // Vehicle Switcher Dropdown
-          DropdownButton<String>(
-            value: currentEvId,
-            underline: Container(),
-            iconEnabledColor: Colors.black,
-            items: List.generate(50, (index) => "EV_$index")
-                .map((id) => DropdownMenuItem(
-                      value: id,
-                      child: Text(id, style: const TextStyle(color: Colors.black)),
-                    ))
-                .toList(),
-            onChanged: (val) {
-              if (val != null) _switchVehicle(val);
-            },
-          ),
-          const SizedBox(width: 20),
-        ],
-      ),
-
-      // --- BODY ---
       body: StreamBuilder<VehicleStatus>(
         stream: _webSocketService.vehicleStatusStream,
         builder: (context, snapshot) {
           if (snapshot.hasData) {
             _status = snapshot.data!;
-            
-            // Logic to move map only if data is valid and changed significantly could be added here,
-            // but for parity with original, we'll check if we have valid non-zero data.
-            if (_status.position.latitude != 0 && _status.position.longitude != 0) {
-               hasData = true;
-               // Move map to vehicle position. 
-               // Note: Calling move inside build can be problematic, but was in original. 
-               // Better is to use a listener or just ensure it doesn't loop. 
-               // For now, we keep it simple but safe via post-frame callback if strictly needed, 
-               // but mapController.move is often okay if not fighting user interaction.
-               // To avoid rebuild loops, we can check distance or just do it.
-               try {
-                 _mapController.move(_status.position, 16.0);
-               } catch (e) {
-                 // Controller might not be ready
-               }
+            if (_status.position.latitude != 0 &&
+                _status.position.longitude != 0) {
+              hasData = true;
+              try {
+                _mapController.move(_status.position, 16.0);
+              } catch (e) {
+                // Controller might not be ready
+              }
             }
           }
 
           return Stack(
             children: [
-              // 1. MAP LAYER
-              LiveMap(
-                mapController: _mapController,
-                evPosition: _status.position,
-                activeJunctions: _status.activeJunctions,
-                hasData: hasData,
+              // 1. FULL SCREEN MAP
+              Positioned.fill(
+                child: LiveMap(
+                  mapController: _mapController,
+                  evPosition: _status.position,
+                  activeJunctions: _status.activeJunctions,
+                  hasData: hasData,
+                ),
               ),
 
-              // 2. DASHBOARD OVERLAY
+              // 2. CUSTOM TOP BAR (Menu + Title + Vehicle Selector)
+              Positioned(
+                top: 0,
+                left: 0,
+                right: 0,
+                child: CustomFloatingAppBar(
+                  title: "ACTIVE MISSION",
+                  subtitle: Text(
+                    currentEvId,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 20,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  actions: [
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(20),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withOpacity(0.2),
+                            blurRadius: 8,
+                            offset: const Offset(0, 2),
+                          ),
+                        ],
+                      ),
+                      child: DropdownButtonHideUnderline(
+                        child: DropdownButton<String>(
+                          value: currentEvId,
+                          icon: const Icon(Icons.keyboard_arrow_down, color: Color(0xFF2ECC71)),
+                          style: const TextStyle(
+                            color: Colors.black87,
+                            fontWeight: FontWeight.bold,
+                          ),
+                          items: List.generate(50, (index) => "EV_$index")
+                              .map((id) => DropdownMenuItem(
+                                    value: id,
+                                    child: Text(id),
+                                  ))
+                              .toList(),
+                          onChanged: (val) {
+                            if (val != null) _switchVehicle(val);
+                          },
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+
+              // 3. BOTTOM STATS PANEL
               Positioned(
                 bottom: 30,
-                left: 20,
-                right: 20,
+                left: 16,
+                right: 16,
                 child: DashboardStatsPanel(
                   speed: _status.speed,
                   eta: _status.eta,
@@ -120,14 +144,16 @@ class _DriverDashboardState extends State<DriverDashboard> {
                 ),
               ),
 
-              // 3. GREEN WAVE ALERT
+              // 4. GREEN WAVE BANNER (Floating below top bar)
               if (_status.isGreenWaveActive)
                 Positioned(
-                  top: 10,
-                  left: 20,
-                  right: 20,
-                  child: GreenWaveBanner(
-                    activeJunctionsCount: _status.activeJunctions.length,
+                  top: 120,
+                  left: 16,
+                  right: 16,
+                  child: Center(
+                    child: GreenWaveBanner(
+                      activeJunctionsCount: _status.activeJunctions.length,
+                    ),
                   ),
                 ),
             ],

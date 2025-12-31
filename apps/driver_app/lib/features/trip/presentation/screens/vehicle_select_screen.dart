@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import '../../../../core/constants/app_constants.dart';
 import '../../../../core/widgets/app_drawer.dart';
+import '../../../../core/widgets/custom_floating_app_bar.dart';
 
 class VehicleSelectScreen extends StatefulWidget {
   const VehicleSelectScreen({super.key});
@@ -78,11 +79,6 @@ class _VehicleSelectScreenState extends State<VehicleSelectScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       extendBodyBehindAppBar: true,
-      appBar: AppBar(
-        title: const Text('Select Vehicle'),
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-      ),
       drawer: const AppDrawer(currentRoute: 'vehicle_selection'),
       body: Stack(
         children: [
@@ -125,6 +121,16 @@ class _VehicleSelectScreenState extends State<VehicleSelectScreen> {
                 final vehicle = _vehicles[index];
                 return _buildVehicleCard(vehicle);
               },
+            ),
+          ),
+
+          // 4. Custom Floating App Bar
+          const Positioned(
+            top: 0,
+            left: 0,
+            right: 0,
+            child: CustomFloatingAppBar(
+              title: "SELECT VEHICLE",
             ),
           ),
         ],
@@ -208,39 +214,43 @@ class _VehicleSelectScreenState extends State<VehicleSelectScreen> {
                     maxLines: 5,
                     overflow: TextOverflow.ellipsis,
                   ),
-                  const Spacer(),
                   
                   // Bottom actions / Status
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                       Text(
-                        vehicle['status'], 
-                        style: TextStyle(
-                          fontSize: 18, 
-                          fontWeight: FontWeight.bold,
-                          color: vehicle['status'] == 'Active' ? primaryColor : Colors.grey,
-                        ),
+                  Expanded(
+                    child: Align(
+                     alignment: Alignment.bottomCenter,
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                           Text(
+                            vehicle['status'], 
+                            style: TextStyle(
+                              fontSize: 18, 
+                              fontWeight: FontWeight.bold,
+                              color: vehicle['status'] == 'Active' ? primaryColor : Colors.grey,
+                            ),
+                          ),
+                          
+                          // Selection Button (Checkmark)
+                          InkWell(
+                            onTap: () => _handleVehicleSelect(vehicleId),
+                            borderRadius: BorderRadius.circular(30),
+                            child: Container(
+                              padding: const EdgeInsets.all(12),
+                              decoration: BoxDecoration(
+                                color: isSelected ? Colors.yellow[700] : Colors.grey[200],
+                                shape: BoxShape.circle,
+                              ),
+                              child: Icon(
+                                Icons.check,
+                                color: isSelected ? Colors.white : Colors.grey[400],
+                                size: 24,
+                              ),
+                            ),
+                          )
+                        ],
                       ),
-                      
-                      // Selection Button (Checkmark)
-                      InkWell(
-                        onTap: () => _handleVehicleSelect(vehicleId),
-                        borderRadius: BorderRadius.circular(30),
-                        child: Container(
-                          padding: const EdgeInsets.all(12),
-                          decoration: BoxDecoration(
-                            color: isSelected ? Colors.yellow[700] : Colors.grey[200],
-                            shape: BoxShape.circle,
-                          ),
-                          child: Icon(
-                            Icons.check,
-                            color: isSelected ? Colors.white : Colors.grey[400],
-                            size: 24,
-                          ),
-                        ),
-                      )
-                    ],
+                    ),
                   )
                 ],
               ),
