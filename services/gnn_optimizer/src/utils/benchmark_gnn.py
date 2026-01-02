@@ -3,10 +3,8 @@ import sys
 import torch
 import numpy as np
 import matplotlib.pyplot as plt
-from datetime import datetime
 
 # 1. Setup Project Paths
-# Ensure we can import from src
 project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 if project_root not in sys.path:
     sys.path.append(project_root)
@@ -18,14 +16,24 @@ from src.config import SimConfig, GraphConfig, TrainConfig, ModelConfig
 
 # --- Configuration ---
 STEPS = 1000               # Simulation duration
-SEED = 42                  # Fixed seed for fairness
+SEED = 42                  # Fixed seed for fair comparison
 MODEL_PATH = "experiments/saved_models/final_marl_model.pth"
 PLOT_DIR = "experiments/plots"
+
+# Set plot style
+plt.style.use('bmh') 
+
+def calculate_weighted_cost(queue, wait):
+    """
+    Calculates 'Total Performance' using the training weights.
+    """
+    w_q = TrainConfig.W_QUEUE
+    w_w = TrainConfig.W_WAIT
+    return (w_q * queue) + (w_w * wait)
 
 def get_metrics(snapshot):
     """
     Extracts raw performance metrics from the SUMO snapshot.
-    We look at Queue Length and Waiting Time as defined in your reward_function.py.
     """
     total_queue = 0
     total_wait = 0
@@ -34,83 +42,59 @@ def get_metrics(snapshot):
         total_queue += info['queue_length']
         total_wait += info['waiting_time']
         
-    return total_queue, total_wait
+    cost = calculate_weighted_cost(total_queue, total_wait)
+    return total_queue, total_wait, cost
 
-def run_baseline():
+def run_simulation(mode="baseline"):
     """
-    Runs the simulation with SUMO's default traffic light logic (No AI).
+    Runs the simulation in 'baseline' or 'gnn' mode.
     """
-    print(f"\n[Baseline] Starting simulation (Seed {SEED})...")
-    manager = SumoManager(SimConfig.SUMO_CFG, use_gui=False)
-    manager.start()
-    manager.step() # Init
+    label = "Baseline (Default)" if mode == "baseline" else "GNN Model"
+    print(f"\n[{label}] Starting simulation (Seed {SEED})...")
     
-    queues = []
-    waits = []
-
-    for t in range(STEPS):
-        manager.step()
-        
-        # Capture metrics
-        snap = manager.get_snapshot()
-        q, w = get_metrics(snap)
-        queues.append(q)
-        waits.append(w)
-
-        if t % 200 == 0:
-            print(f"   Step {t}: Queue={q}")
-
-    manager.close()
-    return np.array(queues), np.array(waits)
-
-def run_gnn_model():
-    """
-    Runs the simulation controlled by your trained GNN model.
-    """
-    print(f"\n[GNN Agent] Starting simulation (Seed {SEED})...")
-    
-    # Init Managers
+    # 1. Init SUMO
     manager = SumoManager(SimConfig.SUMO_CFG, use_gui=False)
     graph_builder = TrafficGraphBuilder(SimConfig.NET_FILE)
     manager.start()
     manager.step()
     
-    # Load Model
-    snapshot = manager.get_snapshot()
-    data = graph_builder.create_hetero_data(snapshot)
+    # 2. Load Model (if GNN)
+    model = None
+    hidden_state = None
     
-    model = RecurrentHGAT(
-        hidden_channels=TrainConfig.HIDDEN_DIM, 
-        out_channels=GraphConfig.NUM_SIGNAL_PHASES, 
-        num_heads=ModelConfig.NUM_HEADS, 
-        metadata=data.metadata()
-    )
-    
-    try:
-        model.load_state_dict(torch.load(MODEL_PATH, map_location='cpu'))
-        model.eval()
-        print(f"   Model loaded: {MODEL_PATH}")
-    except Exception as e:
-        print(f"   Error loading model: {e}")
-        manager.close()
-        return np.array([]), np.array([])
+    if mode == "gnn":
+        snapshot = manager.get_snapshot()
+        data = graph_builder.create_hetero_data(snapshot)
+        model = RecurrentHGAT(
+            hidden_channels=TrainConfig.HIDDEN_DIM, 
+            out_channels=GraphConfig.NUM_SIGNAL_PHASES, 
+            num_heads=ModelConfig.NUM_HEADS, 
+            metadata=data.metadata()
+        )
+        try:
+            model.load_state_dict(torch.load(MODEL_PATH, map_location='cpu'))
+            model.eval()
+            print(f"   Model loaded: {MODEL_PATH}")
+        except Exception as e:
+            print(f"   Error loading model: {e}")
+            manager.close()
+            return [], [], []
 
-    # Simulation Loop
+    # 3. Simulation Loop
     queues = []
     waits = []
-    hidden_state = None
-    ACTION_INTERVAL = 15
+    costs = []
     idx_to_id = {v: k for k, v in graph_builder.tls_map.items()}
+    ACTION_INTERVAL = 15
 
     for t in range(STEPS):
-        # AI Logic
-        if t % ACTION_INTERVAL == 0:
+        # AI Control Logic (Only for GNN mode)
+        if mode == "gnn" and t % ACTION_INTERVAL == 0:
             snapshot = manager.get_snapshot()
             data = graph_builder.create_hetero_data(snapshot)
             
             with torch.no_grad():
                 out = model(data.x_dict, data.edge_index_dict, hidden_state)
-                # Handle model output variations (Tuple vs Tensor)
                 if isinstance(out, tuple):
                     logits = out[0]
                     hidden_state = out[-1]
@@ -119,7 +103,6 @@ def run_gnn_model():
 
                 actions = torch.argmax(logits, dim=1).tolist()
                 
-                # Apply actions
                 actions_dict = {}
                 for idx, val in enumerate(actions):
                     if idx in idx_to_id:
@@ -133,43 +116,110 @@ def run_gnn_model():
         
         # Capture metrics
         snap = manager.get_snapshot()
-        q, w = get_metrics(snap)
+        q, w, c = get_metrics(snap)
         queues.append(q)
         waits.append(w)
+        costs.append(c)
         
         if t % 200 == 0:
-            print(f"   Step {t}: Queue={q}")
+            print(f"   Step {t}: Queue={q} | Cost={c:.1f}")
 
     manager.close()
-    return np.array(queues), np.array(waits)
+    return np.array(queues), np.array(waits), np.array(costs)
 
-def save_comparison_plots(base_q, base_w, gnn_q, gnn_w, imp_q, imp_w):
+def plot_single_metric(base_data, gnn_data, title, ylabel, filename, color):
+    """
+    Helper function to save a single specific plot.
+    """
+    x = range(len(base_data))
+    plt.figure(figsize=(10, 6))
+    
+    # Plot Baseline
+    plt.plot(x, base_data, label='Baseline (Default)', color='#7f8c8d', linestyle='--', linewidth=1.5)
+    
+    # Plot GNN
+    plt.plot(x, gnn_data, label='GNN Model', color=color, linewidth=2)
+    plt.fill_between(x, gnn_data, alpha=0.1, color=color)
+    
+    # Styling
+    plt.title(title, fontsize=14, fontweight='bold')
+    plt.ylabel(ylabel, fontsize=12)
+    plt.xlabel('Simulation Steps', fontsize=12)
+    plt.legend(loc='upper left')
+    plt.grid(True, alpha=0.3)
+    
+    # Save
+    save_path = f"{PLOT_DIR}/{filename}"
+    plt.tight_layout()
+    plt.savefig(save_path, dpi=300)
+    plt.close()
+    print(f"   Saved: {save_path}")
+
+def save_all_plots(base_data, gnn_data):
     if not os.path.exists(PLOT_DIR):
         os.makedirs(PLOT_DIR)
 
-    # Plot 1: Queue Length
-    plt.figure(figsize=(12, 5))
-    plt.plot(base_q, label='Baseline (Default)', color='grey', alpha=0.6, linestyle='--')
-    plt.plot(gnn_q, label='GNN Model', color='green', linewidth=2)
-    plt.title(f'Traffic Congestion Comparison (Improvement: {imp_q:.2f}%)')
-    plt.xlabel('Simulation Steps')
-    plt.ylabel('Total Queue Length (Vehicles)')
-    plt.legend()
-    plt.grid(True, alpha=0.3)
-    plt.savefig(f"{PLOT_DIR}/benchmark_queue.png")
-    plt.close()
+    base_q, base_w, base_c = base_data
+    gnn_q, gnn_w, gnn_c = gnn_data
+    x = range(len(base_q))
 
-    # Plot 2: Waiting Time
-    plt.figure(figsize=(12, 5))
-    plt.plot(base_w, label='Baseline (Default)', color='grey', alpha=0.6, linestyle='--')
-    plt.plot(gnn_w, label='GNN Model', color='blue', linewidth=2)
-    plt.title(f'Waiting Time Comparison (Improvement: {imp_w:.2f}%)')
-    plt.xlabel('Simulation Steps')
-    plt.ylabel('Accumulated Waiting Time (s)')
-    plt.legend()
-    plt.grid(True, alpha=0.3)
-    plt.savefig(f"{PLOT_DIR}/benchmark_wait.png")
+    print("\n[Plotting] Generating graphs...")
+
+    # --- 1. Save Separate Plots ---
+    plot_single_metric(base_q, gnn_q, 
+                      "Network Congestion (Queue Length)", "Vehicles", 
+                      "benchmark_queue.png", "#27ae60") # Green
+
+    plot_single_metric(base_w, gnn_w, 
+                      "Total Waiting Time", "Accumulated Seconds", 
+                      "benchmark_wait.png", "#2980b9") # Blue
+
+    plot_single_metric(base_c, gnn_c, 
+                      "Total Performance (Weighted Cost)", "Weighted Cost (Lower is Better)", 
+                      "benchmark_cost.png", "#8e44ad") # Purple
+
+    # --- 2. Save Combined Summary Plot (3 Subplots) ---
+    fig, (ax1, ax2, ax3) = plt.subplots(3, 1, figsize=(12, 14), sharex=True)
+    
+    # Subplot 1: Queue
+    ax1.plot(x, base_q, label='Baseline', color='#7f8c8d', linestyle='--', linewidth=1.5)
+    ax1.plot(x, gnn_q, label='GNN Model', color='#27ae60', linewidth=2)
+    ax1.fill_between(x, gnn_q, alpha=0.1, color='#27ae60')
+    ax1.set_title('Metric 1: Network Congestion (Queue Length)', fontweight='bold')
+    ax1.set_ylabel('Vehicles')
+    ax1.legend(loc='upper left')
+    ax1.grid(True, alpha=0.3)
+
+    # Subplot 2: Wait
+    ax2.plot(x, base_w, label='Baseline', color='#7f8c8d', linestyle='--', linewidth=1.5)
+    ax2.plot(x, gnn_w, label='GNN Model', color='#2980b9', linewidth=2)
+    ax2.fill_between(x, gnn_w, alpha=0.1, color='#2980b9')
+    ax2.set_title('Metric 2: Total Waiting Time', fontweight='bold')
+    ax2.set_ylabel('Seconds')
+    ax2.legend(loc='upper left')
+    ax2.grid(True, alpha=0.3)
+
+    # Subplot 3: Cost
+    ax3.plot(x, base_c, label='Baseline', color='#7f8c8d', linestyle='--', linewidth=1.5)
+    ax3.plot(x, gnn_c, label='GNN Performance', color='#8e44ad', linewidth=2)
+    ax3.fill_between(x, gnn_c, alpha=0.1, color='#8e44ad')
+    ax3.set_title('Metric 3: Total Performance (Weighted Cost)', fontweight='bold')
+    ax3.set_ylabel('Weighted Cost')
+    ax3.set_xlabel('Simulation Steps')
+    ax3.legend(loc='upper left')
+    ax3.grid(True, alpha=0.3)
+
+    # Add Summary Text at bottom
+    imp_c = ((np.mean(base_c) - np.mean(gnn_c)) / np.mean(base_c)) * 100
+    plt.figtext(0.5, 0.02, 
+                f"Overall Performance Improvement: {imp_c:.2f}% (Weighted Cost Reduction)", 
+                ha="center", fontsize=14, bbox={"facecolor":"white", "alpha":0.8, "pad":5})
+
+    plt.tight_layout(rect=[0, 0.05, 1, 1])
+    save_path = f"{PLOT_DIR}/benchmark_summary.png"
+    plt.savefig(save_path, dpi=300)
     plt.close()
+    print(f"   Saved: {save_path}")
 
 def main():
     print("="*40)
@@ -177,38 +227,28 @@ def main():
     print("="*40)
 
     # 1. Run Simulations
-    base_q, base_w = run_baseline()
-    gnn_q, gnn_w = run_gnn_model()
+    base_data = run_simulation(mode="baseline")
+    gnn_data = run_simulation(mode="gnn")
 
-    if len(gnn_q) == 0:
+    if len(gnn_data[0]) == 0:
         print("GNN Simulation failed. Exiting.")
         return
 
-    # 2. Calculate Statistics
-    avg_base_q = np.mean(base_q)
-    avg_gnn_q = np.mean(gnn_q)
-    
-    avg_base_w = np.mean(base_w)
-    avg_gnn_w = np.mean(gnn_w)
+    # 2. Generate Report
+    base_avg_cost = np.mean(base_data[2])
+    gnn_avg_cost = np.mean(gnn_data[2])
+    improvement = ((base_avg_cost - gnn_avg_cost) / base_avg_cost) * 100
 
-    # Calculate Percentage Improvement
-    # (Baseline - New) / Baseline * 100
-    imp_q = ((avg_base_q - avg_gnn_q) / avg_base_q) * 100 if avg_base_q > 0 else 0
-    imp_w = ((avg_base_w - avg_gnn_w) / avg_base_w) * 100 if avg_base_w > 0 else 0
-
-    # 3. Report
     print("\n" + "-"*40)
     print("RESULTS SUMMARY")
     print("-"*40)
-    print(f"{'Metric':<20} | {'Baseline':<10} | {'GNN Model':<10} | {'Improvement':<10}")
-    print("-" * 58)
-    print(f"{'Avg Queue Length':<20} | {avg_base_q:<10.2f} | {avg_gnn_q:<10.2f} | {imp_q:+.2f}%")
-    print(f"{'Avg Waiting Time':<20} | {avg_base_w:<10.2f} | {avg_gnn_w:<10.2f} | {imp_w:+.2f}%")
-    print("-" * 58)
+    print(f"Avg Baseline Cost: {base_avg_cost:.2f}")
+    print(f"Avg GNN Cost:      {gnn_avg_cost:.2f}")
+    print(f"Net Improvement:   {improvement:+.2f}%")
+    print("-" * 40)
 
-    # 4. Save Plots
-    save_comparison_plots(base_q, base_w, gnn_q, gnn_w, imp_q, imp_w)
-    print(f"\n plots saved to {PLOT_DIR}")
+    # 3. Save Plots (Total 4 files)
+    save_all_plots(base_data, gnn_data)
 
 if __name__ == "__main__":
     main()
