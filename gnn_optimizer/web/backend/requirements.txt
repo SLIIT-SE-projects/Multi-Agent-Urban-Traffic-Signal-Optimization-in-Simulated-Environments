@@ -1,7 +1,0 @@
-flask
-flask-socketio
-flask-cors
-eventlet
-python-socketio
-numpy
-torch

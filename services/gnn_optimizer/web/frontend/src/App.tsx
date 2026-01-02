@@ -29,7 +29,7 @@ const useTrafficSocket = () => {
   });
 
   useEffect(() => {
-    const socket = io('http://localhost:5000');
+    const socket = io('http://localhost:5001');
     socket.on('connect', () => setIsConnected(true));
     socket.on('disconnect', () => setIsConnected(false));
     
@@ -51,8 +51,8 @@ const useTrafficSocket = () => {
     return () => { socket.disconnect(); };
   }, []);
 
-  const handleStart = async () => fetch('http://localhost:5000/api/start', { method: 'POST' });
-  const handleStop = async () => fetch('http://localhost:5000/api/stop', { method: 'POST' });
+  const handleStart = async () => fetch('http://localhost:5001/api/start', { method: 'POST' });
+  const handleStop = async () => fetch('http://localhost:5001/api/stop', { method: 'POST' });
 
   return { isConnected, currentMetrics, dataHistory, handleStart, handleStop };
 };

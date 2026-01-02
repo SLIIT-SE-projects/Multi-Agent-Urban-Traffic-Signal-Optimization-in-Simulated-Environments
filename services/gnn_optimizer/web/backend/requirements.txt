@@ -1,0 +1,11 @@
+flask
+flask-socketio
+flask-cors
+eventlet
+python-socketio
+numpy
+torch
+requests
+python-socketio[client]
+websocket-client
+python-dotenv
