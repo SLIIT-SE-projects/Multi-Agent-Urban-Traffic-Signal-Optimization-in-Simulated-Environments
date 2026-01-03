@@ -93,8 +93,7 @@ class MegaScenarioGenerator:
 
         # A. Background Traffic (Flows)
         # We generate random flows to keep the grid busy throughout the hour
-        # Increased to 500 flows for better density on the large map
-        for i in range(500):
+        for i in range(100):
             begin = random.randint(0, SIMULATION_DURATION - 200)
             src, dst = random.sample(valid_edges, 2)
             all_trips.append({
@@ -103,7 +102,7 @@ class MegaScenarioGenerator:
                 "type": "car",
                 "begin": begin,
                 "end": begin + 600, # Flow lasts 10 mins
-                "number": random.randint(10, 30), # 10-30 cars per flow
+                "number": random.randint(5, 15), # 5-15 cars per flow
                 "from": src, "to": dst
             })
 

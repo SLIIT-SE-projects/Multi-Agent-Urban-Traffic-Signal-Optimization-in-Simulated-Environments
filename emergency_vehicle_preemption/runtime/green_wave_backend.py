@@ -49,7 +49,7 @@ class GreenWaveController:
         self.state_buffer = deque(maxlen=self.sequence_length)
         
         # State
-        self.active_override_tls = None 
+        self.active_override_tls_ids = set() 
         self.active_green_lane = None
         self.smoothed_eta = None 
         self.alpha = 0.3
@@ -108,7 +108,8 @@ class GreenWaveController:
         print(f"Command received: Switch to {new_ev_id}")
         self.ev_id = new_ev_id
         self.state_buffer.clear()
-        self._release_control()
+        for old_id in list(self.active_override_tls_ids):
+            self._release_control(old_id)
         self.smoothed_eta = None
         
         # Try to track visually in SUMO immediately
@@ -154,7 +155,17 @@ class GreenWaveController:
                     dist_to_tls = next_tls_info[0][2]
             except: pass
 
-            is_green_wave = (self.active_override_tls is not None)
+            is_green_wave = (len(self.active_override_tls_ids) > 0)
+            
+            # Find the "active" TLS to show in UI (the closest one that is currently overridden)
+            display_tls_id = ""
+            try:
+                next_all = traci.vehicle.getNextTLS(self.ev_id)
+                for tls_item in next_all:
+                    if tls_item[0] in self.active_override_tls_ids:
+                        display_tls_id = tls_item[0]
+                        break
+            except: pass
             
             return {
                 "type": "status",
@@ -166,51 +177,113 @@ class GreenWaveController:
                 "lat": lat,
                 "lon": lon,
                 "green_wave_active": is_green_wave,
-                "tls_id": self.active_override_tls if is_green_wave else ""
+                "tls_id": display_tls_id
             }
         except:
             return self._build_status_packet(active=False)
 
     # --- REUSED LOGIC FROM PREVIOUS CONTROLLER ---
-    def _release_control(self):
-        if self.active_override_tls:
+    def _release_control(self, tls_id):
+        if tls_id in self.active_override_tls_ids:
             try:
-                traci.trafficlight.setProgram(self.active_override_tls, "0")
+                traci.trafficlight.setProgram(tls_id, "0")
             except: pass
-            self.active_override_tls = None
+            self.active_override_tls_ids.discard(tls_id)
 
-    def _manage_preemption(self, eta):
+    def _manage_preemption(self, eta_first_light):
         try:
-            next_tls_info = traci.vehicle.getNextTLS(self.ev_id)
-            if not next_tls_info:
-                if self.active_override_tls: self._release_control()
+            # 1. Get ALL upcoming traffic lights on the route
+            next_tls_list = traci.vehicle.getNextTLS(self.ev_id)
+            if not next_tls_list:
+                # No lights ahead, release everything
+                for old_id in list(self.active_override_tls_ids):
+                    self._release_control(old_id)
                 return
 
-            target_tls_id = next_tls_info[0][0]
-            dist_to_light = next_tls_info[0][2]
-
-            if self.active_override_tls and self.active_override_tls != target_tls_id:
-                self._release_control()
+            # 2. Identify which lights need to be GREEN
+            target_green_map = {} # {tls_id: tls_index}
             
-            if eta < 30 or dist_to_light < 100:
-                self._force_green_wave(target_tls_id)
-        except: pass
+            current_speed = traci.vehicle.getSpeed(self.ev_id)
+            planning_speed = max(current_speed, 10.0)
 
-    def _force_green_wave(self, tls_id):
+            for i, tls_info in enumerate(next_tls_list):
+                # Format: (tlsID, tlsIndex, distance, state)
+                t_id = tls_info[0]
+                t_index = tls_info[1]
+                t_dist = tls_info[2]
+                
+                # Calculate estimated ETA for this specific light
+                if i == 0:
+                    t_eta = eta_first_light
+                else:
+                    t_eta = t_dist / planning_speed
+
+                # Logic: Greenify if ETA < 30s OR Distance < 100m
+                if t_eta < 30.0 or t_dist < 100.0:
+                    if t_id not in target_green_map:
+                        target_green_map[t_id] = t_index
+
+            # 3. Apply Controls
+            
+            # A. Release lights that are no longer targets
+            current_active = list(self.active_override_tls_ids)
+            for old_id in current_active:
+                if old_id not in target_green_map:
+                    self._release_control(old_id)
+
+            # B. Turn ON new targets
+            for new_id, new_index in target_green_map.items():
+                if new_id not in self.active_override_tls_ids:
+                    self._force_green_wave(new_id, new_index)
+
+        except Exception as e:
+            print(f"Preemption Logic Error: {e}")
+
+    def _force_green_wave(self, tls_id, tls_index):
         try:
-            ev_lane = traci.vehicle.getLaneID(self.ev_id)
-            logic = traci.trafficlight.getAllProgramLogics(tls_id)[0]
-            num_links = len(logic.phases[0].state)
-            new_state_list = ['r'] * num_links
+            # STRATEGY: Phase Selection (Safest)
+            # Instead of manually constructing "rrGrr", we pick a pre-defined phase
+            # from the traffic light's program that is GREEN for our index.
             
-            controlled_links = traci.trafficlight.getControlledLinks(tls_id)
-            for i, links in enumerate(controlled_links):
-                for link in links:
-                    if link[0] == ev_lane:
-                        new_state_list[i] = 'G'
+            logic = traci.trafficlight.getAllProgramLogics(tls_id)[0]
+            phases = logic.phases
+            
+            best_phase_idx = -1
+            
+            # Find the best phase
+            for i, phase in enumerate(phases):
+                # Check if this phase executes Green for our EV's link
+                if len(phase.state) > tls_index:
+                    char = phase.state[tls_index]
+                    if char == 'G' or char == 'g':
+                        best_phase_idx = i
+                        break
+            
+            if best_phase_idx != -1:
+                traci.trafficlight.setPhase(tls_id, best_phase_idx)
+                # Extend duration to ensure it stays green? 
+                # Actually setPhase sets the index, but logic keeps running.
+                # We need to freeze it or set remaining duration.
+                # Forcing the phase resets the timer usually. 
+                # To lock it, we might need to setPhaseDuration too, but let's stick to setPhase which is standard override.
+                # Wait, setPhase just jumps time. The logic continues. 
+                # To HOLD it, we must use setRedYellowGreenState OR setPhaseDuration(huge).
+                
+                # Better approach for holding:
+                # 1. Jump to the Green Phase
+                # 2. Extract that phase's State String
+                # 3. Force that State String manually (Freezing it)
+                
+                target_state = phases[best_phase_idx].state
+                traci.trafficlight.setRedYellowGreenState(tls_id, target_state)
+                self.active_override_tls_ids.add(tls_id)
+                
+            else:
+                print(f"SAFETY ABORT: No existing Green phase found for index {tls_index} at {tls_id}.")
+                return
 
-            traci.trafficlight.setRedYellowGreenState(tls_id, "".join(new_state_list))
-            self.active_override_tls = tls_id
+        except Exception as e:
+            print(f"Force Green Error: {e}")
             
             # Visuals
             traci.vehicle.setColor(self.ev_id, (0, 0, 255, 255))
