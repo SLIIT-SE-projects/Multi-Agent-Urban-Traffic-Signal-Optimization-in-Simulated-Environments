@@ -1,0 +1,2 @@
+- control_enabled=True
+- logging.log_dir=data/logs/mpc

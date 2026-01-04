@@ -8,6 +8,7 @@ NET_DIR = Path("conf/network")
 NET_FILE = NET_DIR / "grid_3x3.net.xml"
 ROU_FILE = NET_DIR / "grid_3x3.rou.xml"
 CFG_FILE = NET_DIR / "grid_3x3.sumocfg"
+ADD_FILE = NET_DIR / "grid_3x3.add.xml"
 
 def run_command(cmd):
     """Runs a shell command and checks for errors."""
@@ -22,21 +23,20 @@ def main():
     # Ensure directory exists
     NET_DIR.mkdir(parents=True, exist_ok=True)
 
-    # 1. Generate Network (3x3 Grid, traffic lights at junctions)
-    # --tls.guess: Automatically add traffic lights
+    # 1. Generate Network (3x3 Grid, FORCING Traffic Lights)
     print("--- Generating Network ---")
     cmd_net = [
         "netgenerate",
         "--grid",
         "--grid.number=3",       # 3x3 intersections
         "--grid.length=200",     # 200m blocks
-        "--tls.guess",           # Add traffic lights
+        # CRITICAL FIX: Force every node to be a Traffic Light
+        "--default-junction-type", "traffic_light", 
         f"--output-file={NET_FILE}"
     ]
     run_command(cmd_net)
 
     # 2. Generate Random Traffic Demand
-    # Using SUMO's randomTrips.py tool
     print("--- Generating Traffic Demand ---")
     sumo_home = os.environ.get("SUMO_HOME")
     if not sumo_home:
@@ -49,8 +49,8 @@ def main():
         "python", str(random_trips_script),
         "-n", str(NET_FILE),
         "-r", str(ROU_FILE),
-        "-e", "3600",           # Generate traffic for 1 hour (3600s)
-        "-p", "2.0",            # New vehicle every 2.0 seconds (high demand)
+        "-e", "3600",           # 1 hour
+        "-p", "2.0",            # High demand (1 car every 2s)
         "--random"
     ]
     run_command(cmd_trips)
@@ -62,6 +62,7 @@ def main():
     <input>
         <net-file value="{NET_FILE.name}"/>
         <route-files value="{ROU_FILE.name}"/>
+        <additional-files value="{ADD_FILE.name}"/>
     </input>
     <time>
         <begin value="0"/>

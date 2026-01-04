@@ -1,3 +1,4 @@
+
 """
 Demand Prediction Module.
 Uses an LSTM neural network to forecast future vehicle arrivals.
@@ -27,6 +28,7 @@ class TrafficLSTM(nn.Module):
         return out
 
 class DemandPredictor:
+
     def __init__(self, config: MPCConfig, lane_ids: list, model_path: str = None):
         self.cfg = config
         self.lane_ids = lane_ids
