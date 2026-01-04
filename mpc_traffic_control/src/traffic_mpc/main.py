@@ -1,7 +1,6 @@
 """
 Main Application Entry Point.
-Phase Split Optimization + Anti-Spillback Capacity Constraints.
-Orchestrates SUMO, Estimation, MPC Control Loop, and Telemetry.
+
 """
 import logging
 import hydra
@@ -12,6 +11,7 @@ from traffic_mpc.config.settings import AppConfig
 from traffic_mpc.interface.sumo_client import SumoClient
 from traffic_mpc.core.estimation import StateEstimator
 from traffic_mpc.core.controller import MPCController
+
 from traffic_mpc.core.prediction import DemandPredictor 
 from traffic_mpc.utils.logging import setup_logging
 from traffic_mpc.utils.telemetry import TelemetryRecorder
@@ -54,6 +54,7 @@ def main(cfg: DictConfig):
         logger.info(f"Measured capacities for {len(lane_capacities)} lanes.")
 
         tls_ids = traci.trafficlight.getIDList()
+
         
         # Initialize Components
         estimator = StateEstimator(link_ids=all_lanes)
@@ -67,6 +68,7 @@ def main(cfg: DictConfig):
                 controllers[tls_id] = MPCController(app_config.mpc, app_config.optimization, local_lanes, [])
 
         # Setup Telemetry - Saves to CSV for the Dashboard
+
         recorder = TelemetryRecorder(
             app_config.logging.log_dir, 
             "simulation_data.csv", 
@@ -84,6 +86,7 @@ def main(cfg: DictConfig):
             raw_data = client.get_detector_data()
             state = estimator.update(raw_data)
             
+
             # Update predictor with clean IDs
             predictor.update_history({k.replace("e2_", ""): v for k, v in raw_data.items()})
             
@@ -93,6 +96,7 @@ def main(cfg: DictConfig):
                 demand = predictor.predict()
                 total_green = 0
                 count = 0
+
                 
                 for tls_id, controller in controllers.items():
                     # Pass Capacities to Solver (Anti-Spillback Logic)
@@ -100,7 +104,7 @@ def main(cfg: DictConfig):
                     
                     logic = traci.trafficlight.getAllProgramLogics(tls_id)[0]
                     phases = logic.phases
-                    
+
                     # Apply Phase Splits (Assuming Standard 4-Phase Cycle)
                     if len(phases) >= 4:
                         phases[0].duration = splits[0]
@@ -114,6 +118,7 @@ def main(cfg: DictConfig):
                 avg_split = total_green / max(1, count)
                 if step % 60 == 0:
                     logger.info(f"Step {step}: Planning Cycle. Avg Main Green: {avg_split:.1f}s")
+
 
             queues = list(state.values())
             

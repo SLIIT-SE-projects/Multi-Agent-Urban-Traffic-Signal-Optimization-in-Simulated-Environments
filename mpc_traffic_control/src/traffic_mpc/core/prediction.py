@@ -28,9 +28,7 @@ class TrafficLSTM(nn.Module):
         return out
 
 class DemandPredictor:
-    """
-    Wrapper for the LSTM model to handle data buffering and inference.
-    """
+
     def __init__(self, config: MPCConfig, lane_ids: list, model_path: str = None):
         self.cfg = config
         self.lane_ids = lane_ids
