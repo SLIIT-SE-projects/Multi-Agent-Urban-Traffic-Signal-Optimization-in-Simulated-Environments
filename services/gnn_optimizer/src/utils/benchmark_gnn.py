@@ -33,17 +33,29 @@ def calculate_weighted_cost(queue, wait):
 
 def get_metrics(snapshot):
     """
-    Extracts raw performance metrics from the SUMO snapshot.
+    Extracts performance metrics: Queue, Wait, and Average Speed.
     """
     total_queue = 0
     total_wait = 0
+    total_speed = 0
+    num_lanes = 0
     
     for lane_id, info in snapshot['lanes'].items():
         total_queue += info['queue_length']
         total_wait += info['waiting_time']
+        # SUMO returns -1 or varying data for empty lanes sometimes, 
+        # generally we take the mean of reported speeds.
+        speed = info.get('avg_speed', 0)
+        total_speed += speed
+        num_lanes += 1
         
     cost = calculate_weighted_cost(total_queue, total_wait)
-    return total_queue, total_wait, cost
+    
+    # Calculate Network Average Speed (m/s)
+    # Avoid division by zero
+    avg_speed = total_speed / num_lanes if num_lanes > 0 else 0
+    
+    return total_queue, total_wait, avg_speed, cost
 
 def run_simulation(mode="baseline"):
     """
@@ -78,12 +90,14 @@ def run_simulation(mode="baseline"):
         except Exception as e:
             print(f"   Error loading model: {e}")
             manager.close()
-            return [], [], []
+            return [], [], [], []
 
     # 3. Simulation Loop
     queues = []
     waits = []
+    speeds = []
     costs = []
+    
     idx_to_id = {v: k for k, v in graph_builder.tls_map.items()}
     ACTION_INTERVAL = 15
 
@@ -116,18 +130,20 @@ def run_simulation(mode="baseline"):
         
         # Capture metrics
         snap = manager.get_snapshot()
-        q, w, c = get_metrics(snap)
+        q, w, s, c = get_metrics(snap)
+        
         queues.append(q)
         waits.append(w)
+        speeds.append(s)
         costs.append(c)
         
         if t % 200 == 0:
-            print(f"   Step {t}: Queue={q} | Cost={c:.1f}")
+            print(f"   Step {t}: Queue={q} | Speed={s:.2f} m/s")
 
     manager.close()
-    return np.array(queues), np.array(waits), np.array(costs)
+    return np.array(queues), np.array(waits), np.array(speeds), np.array(costs)
 
-def plot_single_metric(base_data, gnn_data, title, ylabel, filename, color):
+def plot_single_metric(base_data, gnn_data, title, ylabel, filename, color, higher_is_better=False):
     """
     Helper function to save a single specific plot.
     """
@@ -145,7 +161,11 @@ def plot_single_metric(base_data, gnn_data, title, ylabel, filename, color):
     plt.title(title, fontsize=14, fontweight='bold')
     plt.ylabel(ylabel, fontsize=12)
     plt.xlabel('Simulation Steps', fontsize=12)
-    plt.legend(loc='upper left')
+    
+    # Dynamic Legend Location
+    loc = 'lower right' if higher_is_better else 'upper left'
+    plt.legend(loc=loc)
+    
     plt.grid(True, alpha=0.3)
     
     # Save
@@ -159,8 +179,8 @@ def save_all_plots(base_data, gnn_data):
     if not os.path.exists(PLOT_DIR):
         os.makedirs(PLOT_DIR)
 
-    base_q, base_w, base_c = base_data
-    gnn_q, gnn_w, gnn_c = gnn_data
+    base_q, base_w, base_s, base_c = base_data
+    gnn_q, gnn_w, gnn_s, gnn_c = gnn_data
     x = range(len(base_q))
 
     print("\n[Plotting] Generating graphs...")
@@ -168,24 +188,29 @@ def save_all_plots(base_data, gnn_data):
     # --- 1. Save Separate Plots ---
     plot_single_metric(base_q, gnn_q, 
                       "Network Congestion (Queue Length)", "Vehicles", 
-                      "benchmark_queue.png", "#27ae60") # Green
+                      "benchmark_queue.png", "#27ae60", higher_is_better=False)
 
     plot_single_metric(base_w, gnn_w, 
                       "Total Waiting Time", "Accumulated Seconds", 
-                      "benchmark_wait.png", "#2980b9") # Blue
+                      "benchmark_wait.png", "#2980b9", higher_is_better=False)
+
+    # NEW: Average Speed Plot
+    plot_single_metric(base_s, gnn_s, 
+                      "Average Travel Speed (Proxy for Travel Time)", "Speed (m/s)", 
+                      "benchmark_speed.png", "#e67e22", higher_is_better=True) # Orange
 
     plot_single_metric(base_c, gnn_c, 
-                      "Total Performance (Weighted Cost)", "Weighted Cost (Lower is Better)", 
-                      "benchmark_cost.png", "#8e44ad") # Purple
+                      "Total Performance (Weighted Cost)", "Weighted Cost", 
+                      "benchmark_cost.png", "#8e44ad", higher_is_better=False)
 
-    # --- 2. Save Combined Summary Plot (3 Subplots) ---
-    fig, (ax1, ax2, ax3) = plt.subplots(3, 1, figsize=(12, 14), sharex=True)
+    # --- 2. Save Combined Summary Plot (4 Subplots) ---
+    fig, (ax1, ax2, ax3, ax4) = plt.subplots(4, 1, figsize=(12, 18), sharex=True)
     
     # Subplot 1: Queue
     ax1.plot(x, base_q, label='Baseline', color='#7f8c8d', linestyle='--', linewidth=1.5)
     ax1.plot(x, gnn_q, label='GNN Model', color='#27ae60', linewidth=2)
     ax1.fill_between(x, gnn_q, alpha=0.1, color='#27ae60')
-    ax1.set_title('Metric 1: Network Congestion (Queue Length)', fontweight='bold')
+    ax1.set_title('Metric 1: Network Congestion (Queue)', fontweight='bold')
     ax1.set_ylabel('Vehicles')
     ax1.legend(loc='upper left')
     ax1.grid(True, alpha=0.3)
@@ -199,23 +224,40 @@ def save_all_plots(base_data, gnn_data):
     ax2.legend(loc='upper left')
     ax2.grid(True, alpha=0.3)
 
-    # Subplot 3: Cost
-    ax3.plot(x, base_c, label='Baseline', color='#7f8c8d', linestyle='--', linewidth=1.5)
-    ax3.plot(x, gnn_c, label='GNN Performance', color='#8e44ad', linewidth=2)
-    ax3.fill_between(x, gnn_c, alpha=0.1, color='#8e44ad')
-    ax3.set_title('Metric 3: Total Performance (Weighted Cost)', fontweight='bold')
-    ax3.set_ylabel('Weighted Cost')
-    ax3.set_xlabel('Simulation Steps')
-    ax3.legend(loc='upper left')
+    # Subplot 3: Speed (Travel Time)
+    ax3.plot(x, base_s, label='Baseline', color='#7f8c8d', linestyle='--', linewidth=1.5)
+    ax3.plot(x, gnn_s, label='GNN Model', color='#e67e22', linewidth=2)
+    ax3.fill_between(x, gnn_s, alpha=0.1, color='#e67e22')
+    ax3.set_title('Metric 3: Avg Travel Speed (Higher = Less Travel Time)', fontweight='bold')
+    ax3.set_ylabel('Speed (m/s)')
+    ax3.legend(loc='lower right')
     ax3.grid(True, alpha=0.3)
 
-    # Add Summary Text at bottom
+    # Subplot 4: Cost
+    ax4.plot(x, base_c, label='Baseline', color='#7f8c8d', linestyle='--', linewidth=1.5)
+    ax4.plot(x, gnn_c, label='GNN Performance', color='#8e44ad', linewidth=2)
+    ax4.fill_between(x, gnn_c, alpha=0.1, color='#8e44ad')
+    ax4.set_title('Metric 4: Total Performance (Weighted Cost)', fontweight='bold')
+    ax4.set_ylabel('Cost')
+    ax4.set_xlabel('Simulation Steps')
+    ax4.legend(loc='upper left')
+    ax4.grid(True, alpha=0.3)
+
+    # Add Summary Text
+    # Cost Improvement (Lower is better)
     imp_c = ((np.mean(base_c) - np.mean(gnn_c)) / np.mean(base_c)) * 100
-    plt.figtext(0.5, 0.02, 
-                f"Overall Performance Improvement: {imp_c:.2f}% (Weighted Cost Reduction)", 
+    # Speed Improvement (Higher is better)
+    imp_s = ((np.mean(gnn_s) - np.mean(base_s)) / np.mean(base_s)) * 100
+
+    summary_text = (
+        f"Overall Performance Improvement: {imp_c:.2f}% (Cost Reduction)\n"
+        f"Travel Time Efficiency: {imp_s:.2f}% (Speed Increase)"
+    )
+    
+    plt.figtext(0.5, 0.02, summary_text, 
                 ha="center", fontsize=14, bbox={"facecolor":"white", "alpha":0.8, "pad":5})
 
-    plt.tight_layout(rect=[0, 0.05, 1, 1])
+    plt.tight_layout(rect=[0, 0.06, 1, 1])
     save_path = f"{PLOT_DIR}/benchmark_summary.png"
     plt.savefig(save_path, dpi=300)
     plt.close()
@@ -234,20 +276,34 @@ def main():
         print("GNN Simulation failed. Exiting.")
         return
 
-    # 2. Generate Report
-    base_avg_cost = np.mean(base_data[2])
-    gnn_avg_cost = np.mean(gnn_data[2])
-    improvement = ((base_avg_cost - gnn_avg_cost) / base_avg_cost) * 100
+    # Unpack
+    base_q, base_w, base_s, base_c = base_data
+    gnn_q, gnn_w, gnn_s, gnn_c = gnn_data
+
+    # 2. Calculate Averages
+    avg_base_cost = np.mean(base_c)
+    avg_gnn_cost = np.mean(gnn_c)
+    
+    avg_base_speed = np.mean(base_s)
+    avg_gnn_speed = np.mean(gnn_s)
+
+    # 3. Calculate Improvement %
+    # Cost: Lower is Better -> (Base - GNN) / Base
+    imp_cost = ((avg_base_cost - avg_gnn_cost) / avg_base_cost) * 100
+    
+    # Speed: Higher is Better -> (GNN - Base) / Base
+    imp_speed = ((avg_gnn_speed - avg_base_speed) / avg_base_speed) * 100
 
     print("\n" + "-"*40)
     print("RESULTS SUMMARY")
     print("-"*40)
-    print(f"Avg Baseline Cost: {base_avg_cost:.2f}")
-    print(f"Avg GNN Cost:      {gnn_avg_cost:.2f}")
-    print(f"Net Improvement:   {improvement:+.2f}%")
-    print("-" * 40)
+    print(f"{'Metric':<25} | {'Baseline':<10} | {'GNN Model':<10} | {'Improvement':<10}")
+    print("-" * 65)
+    print(f"{'Avg Weighted Cost':<25} | {avg_base_cost:<10.2f} | {avg_gnn_cost:<10.2f} | {imp_cost:+.2f}%")
+    print(f"{'Avg Network Speed (m/s)':<25} | {avg_base_speed:<10.2f} | {avg_gnn_speed:<10.2f} | {imp_speed:+.2f}%")
+    print("-" * 65)
 
-    # 3. Save Plots (Total 4 files)
+    # 4. Save Plots
     save_all_plots(base_data, gnn_data)
 
 if __name__ == "__main__":
