@@ -19,17 +19,15 @@ class DashboardStatsPanel extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: Colors.black87,
+        color: Colors.white,
         borderRadius: BorderRadius.circular(20),
         border: Border.all(
-          color: isGreenWaveActive ? Colors.greenAccent : Colors.grey,
+          color: isGreenWaveActive ? const Color(0xFF2ECC71) : Colors.grey.shade300,
           width: 2,
         ),
         boxShadow: [
           BoxShadow(
-            color: isGreenWaveActive
-                ? Colors.green.withOpacity(0.5)
-                : Colors.black.withOpacity(0.5),
+            color: Colors.black.withValues(alpha: 0.1),
             blurRadius: 20,
             spreadRadius: 5,
           )
@@ -42,12 +40,12 @@ class DashboardStatsPanel extends StatelessWidget {
           _buildInfoColumn(
               "SPEED", "${speed.toStringAsFixed(1)} km/h", Icons.speed),
           // DIVIDER
-          Container(width: 1, height: 50, color: Colors.grey),
+          Container(width: 1, height: 50, color: Colors.grey.shade300),
           // ETA
           _buildInfoColumn(
               "ETA", "${eta.toStringAsFixed(1)} s", Icons.timer),
           // DIVIDER
-          Container(width: 1, height: 50, color: Colors.grey),
+          Container(width: 1, height: 50, color: Colors.grey.shade300),
           // DISTANCE
           _buildInfoColumn(
               "DIST", "${distToTls.toStringAsFixed(0)} m", Icons.traffic),
@@ -65,11 +63,11 @@ class DashboardStatsPanel extends StatelessWidget {
         Text(
           value,
           style: const TextStyle(
-              fontSize: 28, fontWeight: FontWeight.bold, color: Colors.white),
+              fontSize: 28, fontWeight: FontWeight.bold, color: Colors.black),
         ),
         Text(
           label,
-          style: const TextStyle(color: Colors.grey, fontSize: 12),
+          style: const TextStyle(color: Colors.black87, fontSize: 12, fontWeight: FontWeight.bold),
         ),
       ],
     );

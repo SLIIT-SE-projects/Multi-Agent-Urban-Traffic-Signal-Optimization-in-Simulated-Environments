@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
-import 'package:latlong2/latlong.dart';
 import '../../data/models/vehicle_status.dart';
 import '../../data/services/websocket_service.dart';
 import '../widgets/dashboard_stats_panel.dart';
@@ -49,18 +48,17 @@ class _DriverDashboardState extends State<DriverDashboard> {
       // --- APP BAR ---
       appBar: AppBar(
         title: const Text("EVPS PRIORITY SYSTEM"),
-        backgroundColor: _status.isGreenWaveActive ? Colors.green[800] : Colors.grey[900],
         elevation: 0,
         actions: [
           // Vehicle Switcher Dropdown
           DropdownButton<String>(
             value: currentEvId,
-            dropdownColor: Colors.grey[800],
             underline: Container(),
+            iconEnabledColor: Colors.black,
             items: List.generate(50, (index) => "EV_$index")
                 .map((id) => DropdownMenuItem(
                       value: id,
-                      child: Text(id, style: const TextStyle(color: Colors.white)),
+                      child: Text(id, style: const TextStyle(color: Colors.black)),
                     ))
                 .toList(),
             onChanged: (val) {

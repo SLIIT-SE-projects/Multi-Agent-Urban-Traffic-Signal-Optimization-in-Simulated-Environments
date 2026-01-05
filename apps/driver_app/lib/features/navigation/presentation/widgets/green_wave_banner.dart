@@ -13,7 +13,7 @@ class GreenWaveBanner extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(vertical: 20),
       decoration: BoxDecoration(
-        color: Colors.greenAccent.withOpacity(0.9),
+        color: const Color(0xFF2ECC71).withValues(alpha: 0.9),
         borderRadius: BorderRadius.circular(15),
       ),
       child: Column(
