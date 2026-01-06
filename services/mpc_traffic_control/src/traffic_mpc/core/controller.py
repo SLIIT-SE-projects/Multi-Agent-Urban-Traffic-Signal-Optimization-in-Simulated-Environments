@@ -16,15 +16,23 @@ class MPCController:
                  mpc_config: MPCConfig, 
                  opt_config: OptimizationConfig,
                  lane_ids: List[str],
-                 phases: List[str]): 
+                 num_phases: int,
+                 lane_phase_indices: List[int]): 
         self.cfg = mpc_config
         self.opt_cfg = opt_config
         self.lane_ids = lane_ids
         self.n_lanes = len(lane_ids)
+        self.lane_phase_indices = lane_phase_indices
         
-        self.N = 3  
-        self.CycleTime = 60 
-        self.Phases = 4 
+        # Validation
+        if len(self.lane_phase_indices) != self.n_lanes:
+            raise ValueError(f"lane_phase_indices length ({len(self.lane_phase_indices)}) must match lane_ids ({self.n_lanes})")
+        if max(self.lane_phase_indices) >= num_phases:
+            raise ValueError(f"Max phase index {max(self.lane_phase_indices)} exceeds num_phases {num_phases}")
+
+        self.N = self.cfg.control_horizon  
+        self.CycleTime = 60 # TODO: make configurable or dynamic
+        self.Phases = num_phases
         
         self._setup_solver()
 
@@ -61,7 +69,8 @@ class MPCController:
             
             departures = ca.MX.zeros(self.n_lanes)
             for i in range(self.n_lanes):
-                phase_idx = i % self.Phases 
+                # Use the mapping provided at init
+                phase_idx = self.lane_phase_indices[i]
                 departures[i] = self.P_sat[i] * self.G[phase_idx, k]
             
             q_next = self.Q_state[:, k] + self.P_demand[:, k] - departures
