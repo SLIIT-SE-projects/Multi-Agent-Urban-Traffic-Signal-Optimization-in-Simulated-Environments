@@ -1,19 +1,18 @@
 import React from 'react';
 import { BrowserRouter, Routes, Route, Navigate, NavLink } from 'react-router-dom';
-import { 
-  LayoutDashboard, 
-  Cpu, 
-  Activity, 
-  Map as MapIcon, 
-  Settings, 
-  Network, 
-  Search, 
-  Bell, 
-  ChevronRight 
+import {
+  LayoutDashboard,
+  Cpu,
+  Activity,
+  Settings,
+  Network,
+  Search,
+  Bell,
+  ChevronRight
 } from 'lucide-react';
 
 // Assuming you have this component in a separate file
-import GNNDashboard from './modules/gnn/GNNDashboard'; 
+import GNNDashboard from './modules/gnn/GNNDashboard';
 
 // --- 1. SIDEBAR COMPONENT (Ported from Code 1) ---
 const Sidebar = () => (
@@ -51,10 +50,9 @@ const SidebarItem = ({ to, icon, label }: { to: string; icon: React.ReactNode; l
   <NavLink
     to={to}
     className={({ isActive }) =>
-      `w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all ${
-        isActive
-          ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-900/20'
-          : 'text-slate-400 hover:text-slate-100 hover:bg-slate-800/50'
+      `w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all ${isActive
+        ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-900/20'
+        : 'text-slate-400 hover:text-slate-100 hover:bg-slate-800/50'
       }`
     }
   >
@@ -97,36 +95,36 @@ export default function App() {
       */}
       <div className="flex h-screen bg-[#0B1120] text-slate-100 font-sans overflow-hidden">
         <Sidebar />
-        
+
         <main className="flex-1 flex flex-col min-w-0">
           <TopHeader />
-          
+
           <div className="flex-1 overflow-y-auto p-8">
             <Routes>
               <Route path="/" element={<Navigate to="/overview" />} />
-              
+
               <Route path="/overview" element={
                 <div className="p-10 border-2 border-dashed border-slate-800 rounded-2xl bg-slate-900/20 text-center">
                   <h1 className="text-2xl font-bold text-white">System Overview</h1>
                   <p className="text-slate-500 mt-2">Aggregated metrics would appear here.</p>
                 </div>
               } />
-              
+
               {/* IMPORTANT: Since App.tsx now handles the Sidebar, 
                   make sure GNNDashboard does NOT render its own Sidebar.
                   It should only render the content part.
               */}
               <Route path="/gnn/*" element={<GNNDashboard />} />
-              
+
               <Route path="/mpc" element={
-                 <div className="p-10 border-2 border-dashed border-slate-800 rounded-2xl bg-slate-900/20 text-center">
-                   <h1 className="text-2xl font-bold text-white">MPC Control</h1>
+                <div className="p-10 border-2 border-dashed border-slate-800 rounded-2xl bg-slate-900/20 text-center">
+                  <h1 className="text-2xl font-bold text-white">MPC Control</h1>
                 </div>
               } />
 
-               <Route path="/config" element={
-                 <div className="p-10 border-2 border-dashed border-slate-800 rounded-2xl bg-slate-900/20 text-center">
-                   <h1 className="text-2xl font-bold text-white">System Configuration</h1>
+              <Route path="/config" element={
+                <div className="p-10 border-2 border-dashed border-slate-800 rounded-2xl bg-slate-900/20 text-center">
+                  <h1 className="text-2xl font-bold text-white">System Configuration</h1>
                 </div>
               } />
             </Routes>
