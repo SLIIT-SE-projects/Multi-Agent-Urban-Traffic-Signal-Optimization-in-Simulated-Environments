@@ -1,7 +1,7 @@
 import 'package:latlong2/latlong.dart';
 
 class AppConstants {
-  static const String webSocketUrl = 'ws://172.20.10.9:5000/ws';
+  static const String webSocketUrl = 'ws://192.168.1.11:5000/ws';
   
   static const String defaultEvId = 'EV_0';
 
