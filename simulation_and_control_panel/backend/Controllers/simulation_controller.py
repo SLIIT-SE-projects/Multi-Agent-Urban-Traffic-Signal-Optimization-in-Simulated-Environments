@@ -15,11 +15,12 @@ else:
 
 
 class SimulationController:
-    def __init__(self, config_file, socketio_instance=None, use_gui=True, step_delay=0.1):
+    def __init__(self, config_file, socketio_instance=None, use_gui=True, step_delay=0.1, green_wave_controller=None):
         self.socketio = socketio_instance
         self.config_file = config_file
         self.use_gui = use_gui
         self.default_step_delay = step_delay
+        self.green_wave_controller = green_wave_controller
         self.is_running = False
         self.is_paused = False
         self.current_step = 0
@@ -132,6 +133,10 @@ class SimulationController:
         # 3. ADVANCE SUMO
         traci.simulationStep()
         self.current_step += 1
+
+        # 3.5. GREEN WAVE LOGIC
+        if self.green_wave_controller:
+            self.green_wave_controller.execute_step()
 
         # 4. DATA BROADCAST (Optimized)
         if self.socketio:
