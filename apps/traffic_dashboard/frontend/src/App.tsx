@@ -13,6 +13,7 @@ import {
 
 // Assuming you have this component in a separate file
 import GNNDashboard from './modules/gnn/GNNDashboard';
+import { MPCDashboard } from './modules/mpc/MPCDashboard';
 
 // --- 1. SIDEBAR COMPONENT (Ported from Code 1) ---
 const Sidebar = () => (
@@ -116,11 +117,7 @@ export default function App() {
               */}
               <Route path="/gnn/*" element={<GNNDashboard />} />
 
-              <Route path="/mpc" element={
-                <div className="p-10 border-2 border-dashed border-slate-800 rounded-2xl bg-slate-900/20 text-center">
-                  <h1 className="text-2xl font-bold text-white">MPC Control</h1>
-                </div>
-              } />
+              <Route path="/mpc" element={<MPCDashboard />} />
 
               <Route path="/config" element={
                 <div className="p-10 border-2 border-dashed border-slate-800 rounded-2xl bg-slate-900/20 text-center">

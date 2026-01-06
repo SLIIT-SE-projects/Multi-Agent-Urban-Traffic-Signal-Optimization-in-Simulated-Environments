@@ -62,7 +62,16 @@ class DataController:
                 "vehicles": vehicles_data,
                 "traffic_lights": traffic_lights_data,
                 "is_paused": self.sim_controller.is_paused,
-                "auto_stepping": self.sim_controller.auto_stepping
+                "auto_stepping": self.sim_controller.auto_stepping,
+                # Aggregated Stats for Dashboard
+                "stats": {
+                    "max_queue_length": max([v.get('waiting_time', 0) for v in vehicles_data]) if vehicles_data else 0, # Approximation using wait time as proxy for queue impact or just calc from lane data if available. 
+                    # Actually, better to use lane data for queues if possible, but vehicle data is what we have here.
+                    # Let's use the same logic as simulation_controller logging if possible, or simple vehicle aggregation.
+                    "total_waiting_time": sum([v.get('waiting_time', 0) for v in vehicles_data]),
+                    "avg_speed": sum([v.get('speed', 0) for v in vehicles_data]) / len(vehicles_data) if vehicles_data else 0,
+                    "vehicle_count": len(vehicle_ids)
+                }
             }
         except Exception as e:
             return {"status": "error", "message": str(e)}
