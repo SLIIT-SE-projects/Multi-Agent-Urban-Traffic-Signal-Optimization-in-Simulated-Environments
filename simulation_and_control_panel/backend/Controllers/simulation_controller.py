@@ -5,6 +5,7 @@ import threading
 import time
 import xml.etree.ElementTree as ET
 from optimizers.gnn_adapter import GNNTrafficOptimizer
+from optimizers.mpc_adapter import MPCTrafficOptimizer
 
 # Add SUMO tools to path
 if 'SUMO_HOME' in os.environ:
@@ -85,6 +86,15 @@ class SimulationController:
                 self.optimization_enabled = True
                 print(f"✅ GNN Optimizer attached to: {os.path.basename(current_net_file)}")
                 return {"status": "success", "message": "GNN Optimizer Loaded"}
+            
+            elif model_type == "mpc":
+                # 3. Inject MPC Optimizer
+                self.optimizer = MPCTrafficOptimizer(
+                    net_path=current_net_file
+                )
+                self.optimization_enabled = True
+                print(f"✅ MPC Optimizer attached to: {os.path.basename(current_net_file)}")
+                return {"status": "success", "message": "MPC Optimizer Loaded"}
                 
         except Exception as e:
             print(f"❌ Failed to load optimizer: {e}")
@@ -104,12 +114,38 @@ class SimulationController:
         # 1. AI OPTIMIZATION HOOK
         if self.optimization_enabled and self.optimizer:
             if (self.current_step - self.last_action_step) >= self.action_interval:
-                print(f"🚦 GNN Action Step: {self.current_step} | Calculating phases...")
+                # print(f"🚦 AI Action Step: {self.current_step} | Calculating phases...")
                 try:
                     snapshot = self._capture_snapshot_for_ai()
+                    
+                    # Calculate stats for logging
+                    lanes_data = snapshot.get("lanes", {})
+                    max_queue = 0
+                    total_waiting = 0
+                    total_speed = 0
+                    valid_lanes = 0
+                    
+                    for lane_data in lanes_data.values():
+                        q = lane_data.get("queue_length", 0)
+                        w = lane_data.get("waiting_time", 0)
+                        s = lane_data.get("avg_speed", 0)
+                        
+                        if q > max_queue: max_queue = q
+                        total_waiting += w
+                        total_speed += s
+                        valid_lanes += 1
+                        
+                    avg_speed = (total_speed / valid_lanes) if valid_lanes > 0 else 0
+                    
+                    print(f"🚦 MPC Step: {self.current_step} | Max Queue: {max_queue} veh | Avg Speed: {avg_speed:.2f} m/s | Total Wait: {total_waiting:.1f} s")
+                    
                     actions = self.optimizer.predict(snapshot)
                     self._apply_ai_actions(actions)
                     self.last_action_step = self.current_step
+                except traci.exceptions.FatalTraCIError:
+                    print("Simulation ended by SUMO.")
+                    self.stop()
+                    return
                 except Exception as e:
                     print(f"⚠️ AI Prediction Error: {e}")
 
@@ -131,7 +167,13 @@ class SimulationController:
             del self.yellow_timers[tls_id]
 
         # 3. ADVANCE SUMO
-        traci.simulationStep()
+        try:
+            traci.simulationStep()
+        except traci.exceptions.FatalTraCIError:
+             print("Simulation ended by SUMO (FatalTraCIError).")
+             self.stop()
+             return
+
         self.current_step += 1
 
         # 3.5. GREEN WAVE LOGIC

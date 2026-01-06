@@ -18,9 +18,10 @@ sock = Sock(app) # Initialize raw WebSocket support
 
 socketio = SocketIO(app, cors_allowed_origins="*", async_mode='threading')
 
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 # CHANGE THIS to your actual config file!
-# CONFIG_FILE = os.path.join("..", "scenarios", "mapishara.sumo.cfg")
-CONFIG_FILE = os.path.join("..", "scenarios", "grid3x3", "grid3x3.sumo.cfg")
+# CONFIG_FILE = os.path.join(BASE_DIR, "..", "scenarios", "mapishara.sumo.cfg")
+CONFIG_FILE = os.path.join(BASE_DIR, "..", "scenarios", "grid3x3", "grid3x3.sumo.cfg")
 
 # Initialize controllers
 green_wave_controller = GreenWaveController(use_gui=config.USE_GUI)
