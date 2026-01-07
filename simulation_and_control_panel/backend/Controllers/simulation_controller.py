@@ -307,10 +307,16 @@ class SimulationController:
                 # (For simplicity, we capture again to ensure fresh data after the step)
                 snapshot = self._capture_snapshot_for_ai()
                 
+                # Capture global metrics
+                arrived_vehicles = traci.simulation.getArrivedNumber()
+                
                 self.socketio.emit('simulation_step', {
                     'step': self.current_step,
                     'lanes': snapshot['lanes'],
-                    'intersections': snapshot['intersections']
+                    'intersections': snapshot['intersections'],
+                    'global': {
+                        'arrived_vehicles': arrived_vehicles
+                    }
                 })
             except Exception as e:
                 print(f"Socket Emit Error: {e}")
