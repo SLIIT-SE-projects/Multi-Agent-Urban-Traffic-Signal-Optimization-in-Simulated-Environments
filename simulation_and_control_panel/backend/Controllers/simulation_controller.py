@@ -332,11 +332,9 @@ class SimulationController:
             
         try:
             with self.step_lock:
-
                 self._advance_simulation()
-
-                traci.simulationStep()
-                self.current_step += 1
+                # traci.simulationStep() # REMOVED DOUBLE STEP
+                # self.current_step += 1 # REMOVED DOUBLE INCREMENT
             return {"status": "success", "message": "Step executed", "step": self.current_step}
         except Exception as e:
             return {"status": "error", "message": str(e)}
@@ -364,14 +362,6 @@ class SimulationController:
             }
         return {"intersections": intersections, "lanes": lanes}
 
-    # def _apply_ai_actions(self, actions):
-    #     """Directly apply phases (Basic version - Add Yellow logic for production)"""
-    #     for tls_id, phase_idx in actions.items():
-    #         try:
-    #             traci.trafficlight.setPhase(tls_id, int(phase_idx))
-    #         except Exception as e:
-    #             print(f"Failed to set phase for {tls_id}: {e}")
-        
     def _apply_ai_actions(self, actions):
         for tls_id, action_idx in actions.items():
             try:
@@ -421,7 +411,7 @@ class SimulationController:
                     self.yellow_timers[tls_id] = self.YELLOW_DURATION
 
             except Exception as e:
-                pass
+                print(f"❌ Error applying action to {tls_id}: {e}")
 
     def unload_optimizer(self):
         """Disable the currently loaded optimizer"""

@@ -26,6 +26,18 @@ def start():
 def stop():
     return jsonify(optimization_service.stop_simulation())
 
+@app.route('/api/baseline/record', methods=['POST'])
+def record_baseline():
+    return jsonify(optimization_service.start_simulation(record_mode=True))
+
+@app.route('/api/baseline/stop', methods=['POST'])
+def stop_baseline():
+    return jsonify(optimization_service.stop_simulation())
+
+@app.route('/api/baseline-data', methods=['GET'])
+def get_baseline_data():
+    return jsonify(optimization_service.get_saved_baseline())
+
 @socketio.on('connect')
 def handle_connect():
     print('✅ Client connected to Dashboard')

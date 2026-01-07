@@ -42,7 +42,14 @@ async def run_gnn_cycle():
     service = RemoteOptimizationService(server_socketio=redis_adapter)
     
     # C. Setup Async Redis for Control Listening
+    print(f"DEBUG: Connecting to Redis at {Config.REDIS_HOST}:{Config.REDIS_PORT}...")
     control_redis = redis.Redis(host=Config.REDIS_HOST, port=Config.REDIS_PORT, decode_responses=True)
+    try:
+        await control_redis.ping()
+        print("DEBUG: Successfully connected to Redis!")
+    except Exception as e:
+        print(f"DEBUG: Failed to connect to Redis: {e}")
+        
     pubsub = control_redis.pubsub()
     await pubsub.subscribe("control_gnn")
 
@@ -62,6 +69,16 @@ async def run_gnn_cycle():
             elif command == "stop":
                 # Calls the logic in service.py
                 result = service.stop_simulation()
+                print(f" Service Response: {result}")
+
+            elif command == "record_baseline":
+                print(" Starting Baseline Recording...")
+                result = service.start_baseline_recording()
+                print(f" Service Response: {result}")
+
+            elif command == "stop_baseline":
+                print(" Stopping Baseline Recording...")
+                result = service.stop_baseline_recording()
                 print(f" Service Response: {result}")
 
 if __name__ == "__main__":

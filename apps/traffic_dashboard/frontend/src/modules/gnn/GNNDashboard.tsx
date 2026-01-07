@@ -32,15 +32,14 @@ export default function GNNDashboard() {
           </h1>
           <p className="text-slate-400 text-sm">Graph Neural Network Model Inference & Control</p>
         </div>
-        <button 
+        <button
           onClick={toggleSim}
-          className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-all shadow-lg ${
-            isRunning 
-              ? 'bg-rose-500/10 text-rose-400 border border-rose-500/50 hover:bg-rose-500/20' 
+          className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-all shadow-lg ${isRunning
+              ? 'bg-rose-500/10 text-rose-400 border border-rose-500/50 hover:bg-rose-500/20'
               : 'bg-indigo-600 text-white hover:bg-indigo-500 shadow-indigo-500/20'
-          }`}
+            }`}
         >
-          {isRunning ? <><Square size={16} fill="currentColor"/> Stop Agent</> : <><Play size={16} fill="currentColor"/> Start Agent</>}
+          {isRunning ? <><Square size={16} fill="currentColor" /> Stop Agent</> : <><Play size={16} fill="currentColor" /> Start Agent</>}
         </button>
       </div>
 
@@ -53,11 +52,10 @@ export default function GNNDashboard() {
           <button
             key={tab.id}
             onClick={() => setActiveSubTab(tab.id)}
-            className={`flex items-center gap-2 px-6 py-3 text-sm font-medium border-b-2 transition-colors ${
-              activeSubTab === tab.id 
-                ? 'border-indigo-500 text-indigo-400' 
+            className={`flex items-center gap-2 px-6 py-3 text-sm font-medium border-b-2 transition-colors ${activeSubTab === tab.id
+                ? 'border-indigo-500 text-indigo-400'
                 : 'border-transparent text-slate-400 hover:text-slate-200'
-            }`}
+              }`}
           >
             <tab.icon size={16} /> {tab.label}
           </button>
@@ -65,11 +63,11 @@ export default function GNNDashboard() {
       </div>
 
       <div className="flex-1 overflow-y-auto pr-2 scrollbar-thin scrollbar-thumb-slate-800 scrollbar-track-transparent">
-        {activeSubTab === 'monitor' && <GnnMonitorTab socketData={socketData} />}
+        {activeSubTab === 'monitor' && <GnnMonitorTab socketData={socketData} isRunning={isRunning} />}
         {activeSubTab === 'config' && <GnnConfigTab />}
         {activeSubTab === 'logs' && (
           <div className="text-slate-500 flex flex-col items-center justify-center h-64 border-2 border-dashed border-slate-800 rounded-xl bg-slate-900/50">
-            <FileText size={48} className="mb-4 opacity-50"/>
+            <FileText size={48} className="mb-4 opacity-50" />
             <p>Training logs and tensorboard integration would appear here.</p>
           </div>
         )}
