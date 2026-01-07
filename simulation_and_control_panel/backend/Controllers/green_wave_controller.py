@@ -45,15 +45,19 @@ class GreenWaveController:
 
     def set_websocket(self, ws):
         """Sets the active WebSocket connection for the driver app"""
+        # [FLOW START] Trigger: App Connected
+        # When driver opens the app, we enable the controller.
         self.ws_connection = ws
-        self.active = True
+        self.active = True 
         print("GreenWave: Driver App Connected")
 
     def disconnect_websocket(self):
+        # [FLOW END] Safety Valve: App Disconnected
+        # If app closes/crashes, we immediately kill the logic and release lights.
         self.ws_connection = None
-        self.active = False
+        self.active = False 
         print("GreenWave: Driver App Disconnected")
-        self._release_all()
+        self._release_all() # FAIL-SAFE: Reset lights to normal program
 
     def switch_vehicle(self, new_ev_id):
         print(f"GreenWave: Switch to {new_ev_id}")
@@ -69,6 +73,9 @@ class GreenWaveController:
 
     def execute_step(self):
         """Called by SimulationController every step"""
+        # [FLOW CHECK] The Kill Switch
+        # If app is closed (active=False), checking stops here. 
+        # No AI inference, no preemption, zero overhead.
         if not self.active or not self.ws_connection:
             return
 
