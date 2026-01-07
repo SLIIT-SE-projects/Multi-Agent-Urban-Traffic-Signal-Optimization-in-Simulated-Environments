@@ -62,7 +62,17 @@ class DataController:
                 "vehicles": vehicles_data,
                 "traffic_lights": traffic_lights_data,
                 "is_paused": self.sim_controller.is_paused,
-                "auto_stepping": self.sim_controller.auto_stepping
+                "auto_stepping": self.sim_controller.auto_stepping,
+                # Aggregated Stats for Dashboard
+                "stats": {
+                    "max_queue_length": max([v.get('waiting_time', 0) for v in vehicles_data]) if vehicles_data else 0, 
+                    "total_waiting_time": sum([v.get('waiting_time', 0) for v in vehicles_data]),
+                    "avg_speed": sum([v.get('speed', 0) for v in vehicles_data]) / len(vehicles_data) if vehicles_data else 0,
+                    "vehicle_count": len(vehicle_ids),
+                    # NEW: Accurate Lane-based Queue Metrics
+                    "avg_queue_length": sum([traci.lane.getLastStepHaltingNumber(lane) for lane in traci.lane.getIDList()]) / len(traci.lane.getIDList()) if traci.lane.getIDList() else 0,
+                    "total_queue_length": sum([traci.lane.getLastStepHaltingNumber(lane) for lane in traci.lane.getIDList()])
+                }
             }
         except Exception as e:
             return {"status": "error", "message": str(e)}
