@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Activity, Sliders, Play, Square, Pause } from 'lucide-react';
+import { Activity, Sliders, Square, Pause } from 'lucide-react';
 import MpcMonitorTab from './components/MpcMonitorTab';
 import MpcConfigTab from './components/MpcConfigTab';
 
@@ -48,27 +48,21 @@ export function MPCDashboard() {
         return () => clearInterval(interval);
     }, []);
 
-    const handleStart = async () => {
-        // Logic from user: "await fetch... start"
-        // Assuming we need to start simulation then auto-step
-        await fetch(`${BASE_URL}/simulation/start`, { method: 'POST' });
-        await fetch(`${BASE_URL}/simulation/auto-step/start`, { method: 'POST' });
-
-        // Load MPC by default
+    const handleActivateMPC = async () => {
+        if (!isRunning) {
+            await fetch(`${BASE_URL}/simulation/start`, { method: 'POST' });
+            await fetch(`${BASE_URL}/simulation/auto-step/start`, { method: 'POST' });
+        }
         await loadMPC();
+    };
+
+    const handleNormalSignals = async () => {
+        await loadBaseline();
     };
 
     const handleStop = async () => {
         await fetch(`${BASE_URL}/simulation/stop`, { method: 'POST' });
     };
-
-    const toggleSim = async () => {
-        if (isRunning) {
-            handleStop();
-        } else {
-            handleStart();
-        }
-    }
 
     const loadMPC = async () => {
         await fetch(`${BASE_URL}/optimizer/load`, {
@@ -77,6 +71,11 @@ export function MPCDashboard() {
             body: JSON.stringify({ type: 'mpc' })
         });
         setMpcActive(true);
+    };
+
+    const loadBaseline = async () => {
+        await fetch(`${BASE_URL}/optimizer/unload`, { method: 'POST' });
+        setMpcActive(false);
     };
 
     return (
@@ -91,15 +90,39 @@ export function MPCDashboard() {
                     </h1>
                     <p className="text-slate-400 text-sm">Model Predictive Control Traffic Signal Optimization</p>
                 </div>
-                <button
-                    onClick={toggleSim}
-                    className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-all shadow-lg ${isRunning
-                            ? 'bg-rose-500/10 text-rose-400 border border-rose-500/50 hover:bg-rose-500/20'
-                            : 'bg-indigo-600 text-white hover:bg-indigo-500 shadow-indigo-500/20'
-                        }`}
-                >
-                    {isRunning ? <><Square size={16} fill="currentColor" /> Stop Simulation</> : <><Play size={16} fill="currentColor" /> Start Simulation</>}
-                </button>
+
+                <div className="flex gap-3">
+                    <button
+                        onClick={handleActivateMPC}
+                        className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-all shadow-lg ${mpcActive && isRunning
+                            ? 'bg-indigo-500 text-white ring-2 ring-indigo-400 ring-offset-2 ring-offset-[#0B1120]'
+                            : 'bg-indigo-600 text-white hover:bg-indigo-500'
+                            }`}
+                    >
+                        <Activity size={16} fill={mpcActive && isRunning ? "currentColor" : "none"} />
+                        {mpcActive && isRunning ? 'MPC Active' : 'Activate MPC'}
+                    </button>
+
+                    <button
+                        onClick={handleNormalSignals}
+                        className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-all shadow-lg ${!mpcActive && isRunning
+                            ? 'bg-slate-600 text-white ring-2 ring-slate-500 ring-offset-2 ring-offset-[#0B1120]'
+                            : 'bg-slate-700 text-slate-200 hover:bg-slate-600'
+                            }`}
+                    >
+                        <Pause size={16} />
+                        Normal Signals
+                    </button>
+
+                    {isRunning && (
+                        <button
+                            onClick={handleStop}
+                            className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-all bg-rose-500/10 text-rose-400 border border-rose-500/50 hover:bg-rose-500/20"
+                        >
+                            <Square size={16} fill="currentColor" /> Stop
+                        </button>
+                    )}
+                </div>
             </div>
 
             <div className="flex border-b border-slate-800 mb-6">
@@ -111,8 +134,8 @@ export function MPCDashboard() {
                         key={tab.id}
                         onClick={() => setActiveSubTab(tab.id)}
                         className={`flex items-center gap-2 px-6 py-3 text-sm font-medium border-b-2 transition-colors ${activeSubTab === tab.id
-                                ? 'border-indigo-500 text-indigo-400'
-                                : 'border-transparent text-slate-400 hover:text-slate-200'
+                            ? 'border-indigo-500 text-indigo-400'
+                            : 'border-transparent text-slate-400 hover:text-slate-200'
                             }`}
                     >
                         <tab.icon size={16} /> {tab.label}
