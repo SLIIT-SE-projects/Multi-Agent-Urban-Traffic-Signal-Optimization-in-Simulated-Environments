@@ -1,34 +1,64 @@
 from flask import Flask, jsonify, request
+from flask_sock import Sock
+from flask_socketio import SocketIO
 from flask_cors import CORS
 from Controllers.simulation_controller import SimulationController
 from Controllers.scenario_controller import ScenarioController
 from Controllers.data_controller import DataController
 from Controllers.state_controller import StateController
+from Controllers.green_wave_controller import GreenWaveController
 from config import config
 from flask_socketio import SocketIO
 import os
+import json
 
 app = Flask(__name__)
 CORS(app)  # Allow frontend to connect
+sock = Sock(app) # Initialize raw WebSocket support
 
 socketio = SocketIO(app, cors_allowed_origins="*", async_mode='threading')
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 # CHANGE THIS to your actual config file!
 # CONFIG_FILE = os.path.join(BASE_DIR, "..", "scenarios", "mapishara.sumo.cfg")
-CONFIG_FILE = os.path.join(BASE_DIR, "..", "scenarios", "grid3x3", "grid3x3.sumo.cfg")
+# CONFIG_FILE = os.path.join(BASE_DIR, "..", "scenarios", "grid3x3", "grid3x3.sumo.cfg")
+CONFIG_FILE = os.path.join(BASE_DIR, "..", "..", "services", "emergency_vehicle_preemption", "simulation", "config", "katunayake.sumocfg")
 
 # Initialize controllers
+green_wave_controller = GreenWaveController(use_gui=config.USE_GUI)
+
 sim_controller = SimulationController(
     CONFIG_FILE, 
     use_gui=config.USE_GUI,
     step_delay=config.STEP_DELAY,
-    socketio_instance=socketio
+    socketio_instance=socketio,
+    green_wave_controller=green_wave_controller
 )
 
 data_controller = DataController(sim_controller)
 scenario_controller = ScenarioController(sim_controller)
 state_controller = StateController(sim_controller, data_controller)
+
+# ============================================================================
+# GREEN WAVE WEBSOCKET
+# ============================================================================
+@sock.route('/ws')
+def green_wave_ws(ws):
+    green_wave_controller.set_websocket(ws)
+    try:
+        while True:
+            data = ws.receive()
+            if data:
+                try:
+                    message = json.loads(data)
+                    if message.get("type") == "switch_ev":
+                        green_wave_controller.switch_vehicle(message.get("ev_id"))
+                except:
+                    pass
+    except Exception as e:
+        print(f"WS Error: {e}")
+    finally:
+        green_wave_controller.disconnect_websocket()
 
 
 # ============================================================================

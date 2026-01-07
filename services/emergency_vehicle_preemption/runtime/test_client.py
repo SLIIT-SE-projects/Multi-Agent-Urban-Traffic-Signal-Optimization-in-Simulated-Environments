@@ -3,9 +3,9 @@ import websockets
 import json
 
 async def test():
-    uri = "ws://localhost:8000/ws"
+    uri = "ws://localhost:5000/ws" 
     async with websockets.connect(uri) as websocket:
-        print("Connected to WebSocket")
+        print(f"Connected to Integrated Backend at {uri}")
         while True:
             try:
                 message = await websocket.recv()
