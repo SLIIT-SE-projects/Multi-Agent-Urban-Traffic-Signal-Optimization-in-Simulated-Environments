@@ -11,9 +11,10 @@ import {
   ChevronRight
 } from 'lucide-react';
 
-// Assuming you have this component in a separate file
+// Modules
 import GNNDashboard from './modules/gnn/GNNDashboard';
 import { MPCDashboard } from './modules/mpc/MPCDashboard';
+import SystemOverview from './modules/overview/SystemOverview';
 
 // --- 1. SIDEBAR COMPONENT (Ported from Code 1) ---
 const Sidebar = () => (
@@ -104,12 +105,7 @@ export default function App() {
             <Routes>
               <Route path="/" element={<Navigate to="/overview" />} />
 
-              <Route path="/overview" element={
-                <div className="p-10 border-2 border-dashed border-slate-800 rounded-2xl bg-slate-900/20 text-center">
-                  <h1 className="text-2xl font-bold text-white">System Overview</h1>
-                  <p className="text-slate-500 mt-2">Aggregated metrics would appear here.</p>
-                </div>
-              } />
+              <Route path="/overview" element={<SystemOverview />} />
 
               {/* IMPORTANT: Since App.tsx now handles the Sidebar, 
                   make sure GNNDashboard does NOT render its own Sidebar.
