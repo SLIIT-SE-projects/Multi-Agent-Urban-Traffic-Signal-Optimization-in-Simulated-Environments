@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'core/theme/app_theme.dart';
-import 'features/navigation/presentation/screens/driver_dashboard.dart';
+import 'features/auth/presentation/screens/login_screen.dart';
 
 void main() {
   runApp(const EVPSDriverApp());
@@ -14,7 +14,7 @@ class EVPSDriverApp extends StatelessWidget {
     return MaterialApp(
       title: 'EVPS Driver',
       theme: AppTheme.lightTheme,
-      home: const DriverDashboard(),
+      home: const LoginScreen(),
     );
   }
 }
