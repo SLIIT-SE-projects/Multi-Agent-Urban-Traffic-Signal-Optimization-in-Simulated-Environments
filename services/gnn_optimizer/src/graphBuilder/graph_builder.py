@@ -3,6 +3,7 @@ from torch_geometric.data import HeteroData
 import sumolib
 import numpy as np
 from src.config import GraphConfig
+from collections import defaultdict
 
 class TrafficGraphBuilder:
     def __init__(self, net_file_path):
@@ -13,8 +14,8 @@ class TrafficGraphBuilder:
         
         # --- 1. Identify Nodes (Intersections & Lanes) ---
         
-        # Filter for nodes that are actually Traffic Lights
-        self.tls_nodes = [n for n in self.net.getNodes() if n.getType() == "traffic_light"]
+        # FIX: Iterate over Traffic Lights, not just Nodes
+        self.tls_objects = self.net.getTrafficLights()
         
         # FIX: Get all lanes by iterating through all edges first
         self.all_lanes = []
@@ -24,13 +25,30 @@ class TrafficGraphBuilder:
             self.all_lanes.extend(edge.getLanes())
 
         # Create Mappings: String ID -> Integer Index
-        self.tls_map = {node.getID(): i for i, node in enumerate(self.tls_nodes)}
+        self.tls_map = {tls.getID(): i for i, tls in enumerate(self.tls_objects)}
         self.lane_map = {lane.getID(): i for i, lane in enumerate(self.all_lanes)}
         
-        self.num_intersections = len(self.tls_nodes)
+        # Map physical Nodes to their controlling TLS
+        self.node_to_tls_id = {}
+        self.tls_to_nodes = defaultdict(set) # New map: TLS ID -> Set of Nodes
+        
+        for tls in self.tls_objects:
+            self.tls_to_nodes[tls.getID()] = set()
+            # tls.getConnections() returns a list of lists: [IncomingLane, OutgoingLane, LinkIndex]
+            conns = tls.getConnections()
+            for conn_list in conns:
+                if len(conn_list) > 0:
+                    lane = conn_list[0] # The first element is the incoming lane
+                    # The lane leads TO the intersection controlled by this TLS
+                    node = lane.getEdge().getToNode()
+                    self.node_to_tls_id[node.getID()] = tls.getID()
+                    self.tls_to_nodes[tls.getID()].add(node)
+        
+        self.num_intersections = len(self.tls_objects)
         self.num_lanes = len(self.all_lanes)
         
-        print(f"Graph Initialized: {self.num_intersections} Intersections, {self.num_lanes} Lanes.")
+        print(f"Graph Initialized: {self.num_intersections} Traffic Light Systems, {self.num_lanes} Lanes.")
+        print(f"Graph Builder: Mapped {len(self.tls_map)} Traffic Light Systems")
 
         # --- 2. Build Static Edges ---
         self.static_edges = self._build_static_topology()
@@ -48,23 +66,39 @@ class TrafficGraphBuilder:
             # The edge points TO a node. That node is the intersection this lane feeds.
             target_node = edge.getToNode()
             
-            if target_node.getType() == "traffic_light" and target_node.getID() in self.tls_map:
-                l_idx = self.lane_map[lane_id]
-                i_idx = self.tls_map[target_node.getID()]
-                
-                src_part_of.append(l_idx)
-                dst_part_of.append(i_idx)
+            # Check if the target node is controlled by a TLS
+            if target_node.getID() in self.node_to_tls_id:
+                tls_id = self.node_to_tls_id[target_node.getID()]
+                if tls_id in self.tls_map:
+                    l_idx = self.lane_map[lane_id]
+                    i_idx = self.tls_map[tls_id]
+                    
+                    src_part_of.append(l_idx)
+                    dst_part_of.append(i_idx)
 
         # B. Intersection -> Intersection Topology ('adjacent_to')
-        for node in self.tls_nodes:
-            u_idx = self.tls_map[node.getID()]
-            # Check outgoing edges to find neighbor intersections
-            for outgoing_edge in node.getOutgoing():
-                neighbor_node = outgoing_edge.getToNode()
-                if neighbor_node.getType() == "traffic_light" and neighbor_node.getID() in self.tls_map:
-                    v_idx = self.tls_map[neighbor_node.getID()]
-                    src_adj.append(u_idx)
-                    dst_adj.append(v_idx)
+        for tls in self.tls_objects:
+            u_idx = self.tls_map[tls.getID()]
+            
+            # A TLS might control multiple nodes. We need to check neighbors of ALL controlled nodes.
+            visited_neighbors = set()
+            
+            # Use our pre-calculated nodes list
+            if tls.getID() in self.tls_to_nodes:
+                for node in self.tls_to_nodes[tls.getID()]:
+                    for outgoing_edge in node.getOutgoing():
+                        neighbor_node = outgoing_edge.getToNode()
+                        
+                        # If neighbor is controlled by a DIFFERENT TLS
+                        if neighbor_node.getID() in self.node_to_tls_id:
+                            neighbor_tls_id = self.node_to_tls_id[neighbor_node.getID()]
+                            
+                            if neighbor_tls_id != tls.getID() and neighbor_tls_id in self.tls_map:
+                                if neighbor_tls_id not in visited_neighbors:
+                                    v_idx = self.tls_map[neighbor_tls_id]
+                                    src_adj.append(u_idx)
+                                    dst_adj.append(v_idx)
+                                    visited_neighbors.add(neighbor_tls_id)
         
         # C. Lane -> Lane Flow ('feeds_into')
         for lane in self.all_lanes:
@@ -116,11 +150,16 @@ class TrafficGraphBuilder:
                 p_idx = int(info['phase_index']) % GraphConfig.NUM_SIGNAL_PHASES
                 x_inter[idx, p_idx] = 1.0 
                 x_inter[idx, GraphConfig.NUM_SIGNAL_PHASES] = float(info['time_to_switch'])
-                # Position
-                sumo_node = self.net.getNode(tls_id)
-                if sumo_node:
-                    x, y = sumo_node.getCoord()
-                    pos_inter[idx] = [x, y]
+                
+                # Position: Average of all controlled nodes
+                try:
+                    if tls_id in self.tls_to_nodes and self.tls_to_nodes[tls_id]:
+                        nodes = list(self.tls_to_nodes[tls_id])
+                        xs = [n.getCoord()[0] for n in nodes]
+                        ys = [n.getCoord()[1] for n in nodes]
+                        pos_inter[idx] = [sum(xs)/len(xs), sum(ys)/len(ys)]
+                except:
+                    pass
 
         data['intersection'].x = x_inter
         data['intersection'].pos = torch.tensor(pos_inter, dtype=torch.float)
