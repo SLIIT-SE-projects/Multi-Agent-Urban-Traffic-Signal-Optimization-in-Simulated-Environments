@@ -204,9 +204,16 @@ class GreenWaveController:
                 if i == 0: t_eta = eta_first_light
                 else: t_eta = t_dist / planning_speed
 
-                if t_eta < 30.0 or t_dist < 100.0:
-                    if t_id not in target_green_map:
-                        target_green_map[t_id] = t_index
+                if i == 0:
+                    # First Light: Use AI ETA
+                    if t_eta < 30.0:
+                        if t_id not in target_green_map:
+                            target_green_map[t_id] = t_index
+                else:
+                     # Subsequent Lights: Distance 100m
+                     if t_dist < 100.0:
+                        if t_id not in target_green_map:
+                            target_green_map[t_id] = t_index
 
             current_active = list(self.active_override_tls_ids)
             for old_id in current_active:
