@@ -81,73 +81,41 @@ class LiveMap extends StatelessWidget {
               for (var junction in activeJunctions)
                 Marker(
                   point: LatLng(junction['lat'], junction['lon']),
-                  width: 30,
-                  height: 45,
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.end,
+                  width: 40,
+                  height: 40,
+                  child: Stack(
+                    alignment: Alignment.center,
                     children: [
-                      // Traffic Light Body
+                      // Glow Effect
                       Container(
-                        width: 18,
-                        height: 30,
-                        padding: const EdgeInsets.symmetric(vertical: 3),
+                        width: 40,
+                        height: 40,
                         decoration: BoxDecoration(
-                          color: const Color(0xFF2D3436), // Dark slate
-                          borderRadius: BorderRadius.circular(6),
-                          border: Border.all(color: Colors.white, width: 1),
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.black.withOpacity(0.3),
-                              blurRadius: 4,
-                              offset: const Offset(0, 2),
-                            ),
-                          ],
-                        ),
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                          children: [
-                            // Red (Off)
-                            Container(
-                              width: 6,
-                              height: 6,
-                              decoration: BoxDecoration(
-                                color: Colors.red.withOpacity(0.3),
-                                shape: BoxShape.circle,
-                              ),
-                            ),
-                            // Yellow (Off)
-                            Container(
-                              width: 6,
-                              height: 6,
-                              decoration: BoxDecoration(
-                                color: Colors.amber.withOpacity(0.3),
-                                shape: BoxShape.circle,
-                              ),
-                            ),
-                            // Green (Active & Glowing)
-                            Container(
-                              width: 8,
-                              height: 8,
-                              decoration: BoxDecoration(
-                                color: const Color(0xFF00E676),
-                                shape: BoxShape.circle,
-                                boxShadow: [
-                                  BoxShadow(
-                                    color: const Color(0xFF00E676).withOpacity(0.6),
-                                    blurRadius: 4,
-                                    spreadRadius: 1.5,
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ],
+                          color: const Color(0xFF00E676).withOpacity(0.3),
+                          shape: BoxShape.circle,
                         ),
                       ),
-                      // Pole
+                      // Core Light
                       Container(
-                        width: 3,
-                        height: 8,
-                        color: Colors.grey[800],
+                        width: 20,
+                        height: 20,
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF00E676),
+                          shape: BoxShape.circle,
+                          border: Border.all(color: Colors.white, width: 2),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withOpacity(0.2),
+                              blurRadius: 6,
+                              offset: const Offset(0, 3),
+                            ),
+                          ],
+                        ),
+                        child: const Icon(
+                          Icons.check, // Or just blank, but check adds a nice touch for "Go"
+                          color: Colors.white,
+                          size: 14,
+                        ),
                       ),
                     ],
                   ),
