@@ -6,6 +6,7 @@ from fastapi import FastAPI, WebSocket
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import requests
+import xml.etree.ElementTree as ET
 
 # Import Config (assuming running from root directory)
 from services.config import Config
@@ -92,6 +93,22 @@ async def proxy_get_baseline_data():
     except Exception as e:
         print(f"Error reading baseline data: {e}")
         return []
+
+@app.get("/api/network-graph")
+async def get_network_graph():
+    try:
+        # Proxy to Simulation Backend
+        sim_url = "http://localhost:5000/api/simulation/topology"
+        print(f"DEBUG: Fetching topology from {sim_url}")
+        response = requests.get(sim_url)
+        if response.status_code == 200:
+            return response.json()
+        else:
+            print(f"Error fetching topology: {response.status_code} - {response.text}")
+            return {"error": "Failed to fetch topology from simulation backend"}
+    except Exception as e:
+        print(f"Error proxying network graph: {e}")
+        return {"error": str(e)}
 
 # 7. WEBSOCKET ENDPOINT
 @app.websocket("/ws")

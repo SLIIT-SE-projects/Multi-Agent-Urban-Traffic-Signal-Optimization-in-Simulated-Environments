@@ -249,6 +249,13 @@ def unload_optimizer():
 
 
 
+@app.route('/api/simulation/topology', methods=['GET'])
+def get_topology():
+    """Get the network topology (intersections, lanes, edges)"""
+    result = sim_controller.get_network_topology()
+    return jsonify(result)
+
+
 if __name__ == '__main__':
     print("=" * 60)
     print("Starting Traffic Simulation API...")
