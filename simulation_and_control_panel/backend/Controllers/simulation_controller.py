@@ -66,6 +66,123 @@ class SimulationController:
             print(f"❌ Error resolving network file: {e}")
             return None
 
+    def get_network_topology(self):
+        """
+        Parses the SUMO network file to extract topology for visualization.
+        Returns a dictionary with nodes (intersections, lanes) and edges (adjacency, flow, membership).
+        """
+        net_file = self._get_net_file_from_config()
+        if not net_file:
+            return {"error": "Network file not found"}
+
+        try:
+            tree = ET.parse(net_file)
+            root = tree.getroot()
+
+            intersections = []
+            lanes = []
+            edges = [] # Adjacency (Intersection -> Intersection)
+            flow_edges = [] # Flow (Lane -> Lane)
+            membership_edges = [] # Membership (Lane -> Intersection)
+
+            # 1. Parse Intersections (Junctions)
+            junctions = {}
+            for junction in root.findall('junction'):
+                j_id = junction.get('id')
+                j_type = junction.get('type')
+                
+                if j_type == "internal": continue # Skip internal junctions
+
+                try:
+                    x = float(junction.get('x'))
+                    y = float(junction.get('y'))
+                    junctions[j_id] = {"x": x, "y": y}
+                    intersections.append({
+                        "id": j_id,
+                        "x": x,
+                        "y": y,
+                        "type": j_type
+                    })
+                except:
+                    continue
+
+            # 2. Parse Edges (Roads) & Lanes
+            # Map edge_id -> from_node, to_node
+            edge_map = {} 
+            
+            for edge in root.findall('edge'):
+                e_id = edge.get('id')
+                e_from = edge.get('from')
+                e_to = edge.get('to')
+                e_func = edge.get('function')
+
+                if e_func == "internal": continue
+                if not e_from or not e_to: continue
+
+                edge_map[e_id] = {"from": e_from, "to": e_to}
+
+                # Add Adjacency Edge (Intersection -> Intersection)
+                # We use a set later to remove duplicates if multiple edges connect same nodes
+                edges.append({
+                    "from": e_from,
+                    "to": e_to,
+                    "id": e_id
+                })
+
+                # Parse Lanes within this Edge
+                for lane in edge.findall('lane'):
+                    l_id = lane.get('id')
+                    shape_str = lane.get('shape')
+                    
+                    # Calculate lane position (center of shape or start)
+                    # Shape is "x1,y1 x2,y2 ..."
+                    try:
+                        coords = [tuple(map(float, p.split(','))) for p in shape_str.split()]
+                        # Use midpoint for visualization
+                        mid_idx = len(coords) // 2
+                        lx, ly = coords[mid_idx]
+                        
+                        lanes.append({
+                            "id": l_id,
+                            "x": lx,
+                            "y": ly,
+                            "parent_edge": e_id
+                        })
+
+                        # Add Membership Edge (Lane -> Intersection (to_node))
+                        # A lane "belongs" to the edge, which flows INTO 'to_node'
+                        membership_edges.append({
+                            "from": l_id,
+                            "to": e_to
+                        })
+
+                    except:
+                        continue
+
+            # 3. Parse Connections (Lane -> Lane Flow)
+            for conn in root.findall('connection'):
+                from_lane = f"{conn.get('from')}_{conn.get('fromLane')}"
+                to_lane = f"{conn.get('to')}_{conn.get('toLane')}"
+                
+                # Verify both lanes exist (sometimes internal lanes are referenced)
+                # For simplicity, we just add the edge. The frontend can filter if needed.
+                flow_edges.append({
+                    "from": from_lane,
+                    "to": to_lane
+                })
+
+            return {
+                "intersections": intersections,
+                "lanes": lanes,
+                "adjacency": edges,
+                "flow": flow_edges,
+                "membership": membership_edges
+            }
+
+        except Exception as e:
+            print(f"❌ Error parsing topology: {e}")
+            return {"error": str(e)}
+
     def load_optimizer(self, model_type="gnn"):
         """Load the AI model with the CURRENT simulation map"""
         print(f"🔌 Loading {model_type.upper()} Optimizer...")
@@ -379,11 +496,9 @@ class SimulationController:
             
         try:
             with self.step_lock:
-
                 self._advance_simulation()
-
-                traci.simulationStep()
-                self.current_step += 1
+                # traci.simulationStep() # REMOVED DOUBLE STEP
+                # self.current_step += 1 # REMOVED DOUBLE INCREMENT
             return {"status": "success", "message": "Step executed", "step": self.current_step}
         except Exception as e:
             return {"status": "error", "message": str(e)}
@@ -411,14 +526,6 @@ class SimulationController:
             }
         return {"intersections": intersections, "lanes": lanes}
 
-    # def _apply_ai_actions(self, actions):
-    #     """Directly apply phases (Basic version - Add Yellow logic for production)"""
-    #     for tls_id, phase_idx in actions.items():
-    #         try:
-    #             traci.trafficlight.setPhase(tls_id, int(phase_idx))
-    #         except Exception as e:
-    #             print(f"Failed to set phase for {tls_id}: {e}")
-        
     def _apply_ai_actions(self, actions):
         for tls_id, action_idx in actions.items():
             try:
@@ -468,7 +575,7 @@ class SimulationController:
                     self.yellow_timers[tls_id] = self.YELLOW_DURATION
 
             except Exception as e:
-                pass
+                print(f"❌ Error applying action to {tls_id}: {e}")
 
     def unload_optimizer(self):
         """Disable the currently loaded optimizer"""
