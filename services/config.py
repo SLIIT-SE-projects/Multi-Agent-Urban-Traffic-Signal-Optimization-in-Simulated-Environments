@@ -29,3 +29,4 @@ class Config:
 
     MANAGER_API = os.getenv('MANAGER_API', 'http://localhost:5000/api')
     MANAGER_WS = os.getenv('MANAGER_WS', 'http://localhost:5000')
+    GNN_SERVICE_URL = os.getenv('GNN_SERVICE_URL', 'http://localhost:5001')
