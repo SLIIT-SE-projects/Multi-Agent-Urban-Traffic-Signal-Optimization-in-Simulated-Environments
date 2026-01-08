@@ -16,6 +16,7 @@ if mpc_service_path not in sys.path:
 
 try:
     from traffic_mpc.core.controller import MPCController
+    from traffic_mpc.core.prediction import DemandPredictor
     from traffic_mpc.config.settings import MPCConfig, OptimizationConfig
 except ImportError as e:
     print(f"❌ MPC Adapter Error: Could not import traffic_mpc. Ensure services/mpc_traffic_control is usable. {e}")
@@ -42,6 +43,10 @@ class MPCTrafficOptimizer:
             max_green_time=60
         )
         self.opt_cfg = OptimizationConfig()
+        
+        # New: Global Predictor
+        self.predictor = None
+        self.all_lanes_ordered = []
         
         self._initialize_controllers()
 
@@ -125,6 +130,27 @@ class MPCTrafficOptimizer:
                     
             print(f"✅ MPC Initialized for {count} intersections.")
             
+            # --- NEW: Init Predictor ---
+            # 1. Collect all lanes from all controllers
+            all_lanes_set = set()
+            for tls_id, data in self.controllers.items():
+                # data["model"].lane_ids contains the lanes controlled by this TLS
+                for lid in data["model"].lane_ids:
+                    all_lanes_set.add(lid)
+            
+            self.all_lanes_ordered = sorted(list(all_lanes_set))
+            
+            # 2. Path to Model
+            # Assuming standard location relative to mpc_service_path
+            # mpc_service_path is .../services/mpc_traffic_control/src
+            data_dir = os.path.abspath(os.path.join(mpc_service_path, "../data"))
+            model_path = os.path.join(data_dir, "model.pth")
+            
+            print(f"🔮 Initializing Demand Predictor for {len(self.all_lanes_ordered)} lanes...")
+            print(f"   Model Path: {model_path}")
+            
+            self.predictor = DemandPredictor(self.mpc_cfg, self.all_lanes_ordered, model_path)
+            
         except Exception as e:
             print(f"❌ Error managing TraCI during init: {e}")
             # If called before simulation start, this fails. 
@@ -137,6 +163,36 @@ class MPCTrafficOptimizer:
         actions = {}
         current_step = traci.simulation.getTime() # Use time or step
         
+        # --- NEW: Update Prediction (Once per Step) ---
+        # 1. Gather all current flows
+        # snapshot['lanes'][lid]['induction_loop_flow']... wait, need to check snapshot structure
+        # Assuming snapshot has basic lane data. If flow not present, we can't update correctly.
+        # But 'DemandPredictor' needs flow.
+        # We'll try to extract what we can.
+        
+        current_flows = {}
+        lanes_data = snapshot.get("lanes", {})
+        for lid, info in lanes_data.items():
+            # info might have 'last_step_vehicle_number' or similar
+            # For now, let's use queue length as a proxy if flow missing? No, that's bad.
+            # Let's assume there's a flow field or we just pass 0.
+            # Ideally mpc_adapter SHOULD get reading from E2/E1.
+            # If snapshot is from SimulationController, it sends processed data.
+            # Let's assume induction_loop info.
+            current_flows[lid] = info.get("throughput", 0.0) * 3600.0 # Convert to veh/hour? Or just counts
+            # Predictor expects counts per step often.
+            
+        if self.predictor:
+            self.predictor.update_history(current_flows)
+            all_predicted_demand = self.predictor.predict() # shape [n_all, N]
+            
+            # Create a lookup map: LaneID -> [Forecast Array]
+            global_demand_map = {}
+            for idx, lid in enumerate(self.all_lanes_ordered):
+                 global_demand_map[lid] = all_predicted_demand[idx]
+        else:
+            global_demand_map = {}
+
         for tls_id, data in self.controllers.items():
             model = data["model"]
             plan = self.cycle_plans.get(tls_id)
@@ -173,9 +229,17 @@ class MPCTrafficOptimizer:
             
             # 2. If no plan (or just expired), Optimize
             if not plan:
-                # Gather Queues
+                # Gather Queues (and Flow for Prediction)
                 queues = {}
+                current_flows = {} # For predictor history
                 lanes_data = snapshot.get("lanes", {})
+                
+                # Update Predictor History (Global) helps if we do it once per step, 
+                # but doing it here locally is fine if we are careful.
+                # Actually, predict() is called once per sim step (presumably).
+                # So we should update predictor ONCE at top of function.
+                pass 
+
                 for lid in model.lane_ids:
                     # Default if missing
                     # Note: Queue length is in veh count
@@ -185,9 +249,23 @@ class MPCTrafficOptimizer:
                     queues[lid] = q
                 
                 # Optimize
-                # Demand/Capacity are placeholders for now
+                # Get Specific Demand for this intersection's lanes
+                # demand matrix shape: [n_local_lanes, N]
+                local_demand = np.zeros((model.n_lanes, model.N))
+                
                 try:
-                    green_times = model.optimize(queues, demand=np.zeros((model.n_lanes, model.N)), capacities={})
+                    # Map global demand to local lanes
+                    for i, lid in enumerate(model.lane_ids):
+                        if lid in global_demand_map:
+                            # Slice prediction to match Control Horizon (model.N)
+                            # Prediction might be 20 steps, but Optimization only cares about next 5.
+                            full_pred = global_demand_map[lid]
+                            local_demand[i, :] = full_pred[:model.N]
+                        else:
+                             # Fallback if lane not in predictor (shouldn't happen)
+                            local_demand[i, :] = 0.5 # moderate demand assumption
+                            
+                    green_times = model.optimize(queues, demand=local_demand, capacities={})
                 except Exception as e:
                     print(f"MPC Optimization failed for {tls_id}: {e}")
                     green_times = [15.0] * model.Phases

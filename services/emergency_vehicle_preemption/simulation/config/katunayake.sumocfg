@@ -1,4 +1,8 @@
 <configuration>
-    <input><net-file value="..\networks\katunayake.net.xml"/><route-files value="..\routes\katunayake.rou.xml"/></input>
+    <input>
+        <net-file value="..\networks\katunayake.net.xml"/>
+        <route-files value="..\routes\katunayake.rou.xml"/>
+        <additional-files value="katunayake.add.xml"/>
+    </input>
     <time><begin value="0"/><end value="4000"/></time>
 </configuration>

@@ -21,7 +21,7 @@ socketio = SocketIO(app, cors_allowed_origins="*", async_mode='threading')
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 # CHANGE THIS to your actual config file!
 # CONFIG_FILE = os.path.join(BASE_DIR, "..", "scenarios", "mapishara.sumo.cfg")
-# CONFIG_FILE = os.path.join(BASE_DIR, "..", "scenarios", "grid3x3", "grid3x3.sumo.cfg")
+#CONFIG_FILE = os.path.join(BASE_DIR, "..", "scenarios", "grid3x3", "grid3x3.sumo.cfg")
 CONFIG_FILE = os.path.join(BASE_DIR, "..", "..", "services", "emergency_vehicle_preemption", "simulation", "config", "katunayake.sumocfg")
 
 # Initialize controllers
@@ -285,6 +285,38 @@ def get_topology():
     """Get the network topology (intersections, lanes, edges)"""
     result = sim_controller.get_network_topology()
     return jsonify(result)
+
+
+# ============================================================================
+# MPC BASELINE ENDPOINTS
+# ============================================================================
+
+BASELINE_FILE = os.path.join(BASE_DIR, "mpc_baseline_metrics.json")
+
+@app.route('/api/mpc/baseline', methods=['GET'])
+def get_mpc_baseline():
+    """Get the saved baseline metrics if they exist"""
+    if os.path.exists(BASELINE_FILE):
+        try:
+            with open(BASELINE_FILE, 'r') as f:
+                data = json.load(f)
+            return jsonify({"status": "success", "data": data})
+        except Exception as e:
+            return jsonify({"status": "error", "message": str(e)})
+    else:
+        return jsonify({"status": "not_found", "message": "No baseline file found"}), 404
+
+@app.route('/api/mpc/baseline', methods=['POST'])
+def save_mpc_baseline():
+    """Save the current run metrics as the baseline"""
+    data = request.json
+    try:
+        with open(BASELINE_FILE, 'w') as f:
+            json.dump(data, f, indent=2)
+        return jsonify({"status": "success", "message": "Baseline saved"})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)})
+
 
 
 if __name__ == '__main__':

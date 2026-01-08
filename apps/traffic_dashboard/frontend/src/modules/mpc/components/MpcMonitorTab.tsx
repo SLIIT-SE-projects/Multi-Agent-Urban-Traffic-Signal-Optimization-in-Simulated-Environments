@@ -28,12 +28,12 @@ const MpcMonitorTab: React.FC<MpcMonitorTabProps> = ({ status, dataHistory }) =>
 
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 {/*  Use waitingTime and avgSpeed from history */}
-                <MpcChartCard title="Total Waiting Time" data={dataHistory} dataKey="waitingTime" color="text-rose-500" fillId="wGrad" />
-                <MpcChartCard title="Network Speed Flow" data={dataHistory} dataKey="avgSpeed" color="text-amber-400" fillId="sGrad" />
+                <MpcChartCard title="Total Waiting Time" data={dataHistory} dataKey="waitingTime" baselineKey="baseline_waitingTime" color="text-rose-500" fillId="wGrad" />
+                <MpcChartCard title="Network Speed Flow" data={dataHistory} dataKey="avgSpeed" baselineKey="baseline_avgSpeed" color="text-amber-400" fillId="sGrad" />
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-1 gap-6">
-                <MpcChartCard title="Active Vehicles" data={dataHistory} dataKey="vehicles" color="text-blue-500" fillId="vGrad" height="h-64" />
+                <MpcChartCard title="Max Queue Length" data={dataHistory} dataKey="maxQueue" baselineKey="baseline_maxQueue" color="text-purple-500" fillId="qGrad" height="h-64" />
             </div>
         </div>
     );

@@ -65,7 +65,7 @@ class DataController:
                 "auto_stepping": self.sim_controller.auto_stepping,
                 # Aggregated Stats for Dashboard
                 "stats": {
-                    "max_queue_length": max([v.get('waiting_time', 0) for v in vehicles_data]) if vehicles_data else 0, 
+                    "max_queue_length": max([traci.lane.getLastStepHaltingNumber(lane) for lane in traci.lane.getIDList()]) if traci.lane.getIDList() else 0, 
                     "total_waiting_time": sum([v.get('waiting_time', 0) for v in vehicles_data]),
                     "avg_speed": sum([v.get('speed', 0) for v in vehicles_data]) / len(vehicles_data) if vehicles_data else 0,
                     "vehicle_count": len(vehicle_ids),
