@@ -219,7 +219,6 @@ class _TripSetupScreenState extends State<TripSetupScreen> {
               title: "SETUP MISSION",
               titleColor: Colors.black, // Since background is white
               showGradient: false, // Clean look on white
-              showBack: true,
             ),
           ),
         ],

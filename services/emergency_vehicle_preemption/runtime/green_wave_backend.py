@@ -239,21 +239,23 @@ class GreenWaveController:
             planning_speed = max(current_speed, 10.0)
 
             for i, tls_info in enumerate(next_tls_list):
-                # Format: (tlsID, tlsIndex, distance, state)
                 t_id = tls_info[0]
                 t_index = tls_info[1]
                 t_dist = tls_info[2]
                 
-                # Calculate estimated ETA for this specific light
-                if i == 0:
-                    t_eta = eta_first_light
-                else:
-                    t_eta = t_dist / planning_speed
+                if i == 0: t_eta = eta_first_light
+                else: t_eta = t_dist / planning_speed
 
-                # Logic: Greenify if ETA < 30s OR Distance < 100m
-                if t_eta < 30.0 or t_dist < 100.0:
-                    if t_id not in target_green_map:
-                        target_green_map[t_id] = t_index
+                if i == 0:
+                    # First Light: Use AI ETA
+                    if t_eta < 30.0:
+                        if t_id not in target_green_map:
+                            target_green_map[t_id] = t_index
+                else:
+                     # Subsequent Lights: Distance 100m
+                     if t_dist < 100.0:
+                        if t_id not in target_green_map:
+                            target_green_map[t_id] = t_index
 
             # 3. Apply Controls
             
