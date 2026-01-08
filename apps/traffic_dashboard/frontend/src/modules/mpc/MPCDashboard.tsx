@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react';
-import { Activity, Sliders, Square, Pause } from 'lucide-react';
+import { useState, useEffect, useRef } from 'react';
+import { Activity, Square, Settings } from 'lucide-react';
 import MpcMonitorTab from './components/MpcMonitorTab';
 import MpcConfigTab from './components/MpcConfigTab';
 
@@ -11,10 +11,41 @@ export function MPCDashboard() {
     const [status, setStatus] = useState<any>(null);
     const [dataHistory, setDataHistory] = useState<any[]>([]);
     const [isConnected, setIsConnected] = useState(false);
-    const [isRunning, setIsRunning] = useState(false); // Using local state for button toggle logic mostly
+    const [isRunning, setIsRunning] = useState(false);
     const [mpcActive, setMpcActive] = useState(false);
 
-    // Poll Status
+    // --- Baseline Logic ---
+    const [baselineData, setBaselineData] = useState<any[] | null>(null);
+    const [isBaselineRun, setIsBaselineRun] = useState(false);
+    const hasSavedBaseline = useRef(false); // Validated save to prevent duplicates
+
+    // 1. Fetch Baseline on Mount
+    useEffect(() => {
+        const fetchBaseline = async () => {
+            try {
+                const res = await fetch(`${BASE_URL}/mpc/baseline`);
+                if (res.ok) {
+                    const json = await res.json();
+                    if (json.status === 'success' && Array.isArray(json.data) && json.data.length > 0) {
+                        setBaselineData(json.data);
+                        console.log("Loaded Baseline Data:", json.data.length, "points");
+                    } else {
+                        console.warn("Baseline found but empty/invalid.");
+                        setIsBaselineRun(true);
+                    }
+                } else {
+                    console.log("No Baseline Found. This run will be recorded as Baseline.");
+                    setIsBaselineRun(true);
+                }
+            } catch (e) {
+                console.error("Failed to fetch baseline:", e);
+                setIsBaselineRun(true);
+            }
+        };
+        fetchBaseline();
+    }, []);
+
+    // 2. Poll Status & Update Data
     useEffect(() => {
         const interval = setInterval(async () => {
             try {
@@ -23,19 +54,57 @@ export function MPCDashboard() {
                     const data = await res.json();
                     setStatus(data);
                     setIsConnected(true);
-                    // Sync local running state
-                    setIsRunning(data.is_running && !data.is_paused);
+                    const simRunning = data.is_running && !data.is_paused;
+                    setIsRunning(simRunning);
+
+                    // Reset saved flag if we start running again
+                    if (simRunning && hasSavedBaseline.current) {
+                        hasSavedBaseline.current = false;
+                    }
 
                     if (data.status === 'success') {
                         setDataHistory(prev => {
-                            const newData = [...prev, {
+                            // Deduplication: Don't add if step is same as last
+                            if (prev.length > 0 && prev[prev.length - 1].step === data.step) return prev;
+
+                            // 2a. Create current data point
+                            const newPoint: any = {
                                 step: data.step,
                                 vehicles: data.vehicle_count,
                                 avgSpeed: data.stats?.avg_speed || 0,
                                 waitingTime: data.stats?.total_waiting_time || 0,
                                 maxQueue: data.stats?.max_queue_length || 0
-                            }];
-                            return newData.slice(-50); // Keep last 50 points
+                            };
+
+                            // 2b. Merge with Baseline (if exists)
+                            if (baselineData && baselineData.length > 0) {
+                                // Find baseline point with CLOSEST step to handle polling jitter
+                                // We filter for points reasonably close (e.g. within 10 steps) to avoid matching step 100 to step 0
+                                const closest = baselineData.reduce((prev, curr) => {
+                                    return (Math.abs(curr.step - data.step) < Math.abs(prev.step - data.step) ? curr : prev);
+                                });
+
+                                // Only use if it's within a reasonable threshold (e.g. 20 steps)
+                                if (Math.abs(closest.step - data.step) <= 20) {
+                                    newPoint.baseline_avgSpeed = closest.avgSpeed;
+                                    newPoint.baseline_waitingTime = closest.waitingTime;
+                                    newPoint.baseline_maxQueue = closest.maxQueue;
+                                }
+                            }
+
+                            // Keep history manageable
+                            // If isBaselineRun, we might want to keep ALL history to save it?
+                            // Yes, for recording baseline we need full history.
+                            // But for display we might slice. 
+                            // Strategy: Keep full history in a separate ref if recording? 
+                            // Or just allow growing array (simulation isn't infinite in this context).
+                            // Let's cap visual history but maybe we need full persistence.
+                            // User said: "Record metrics... for every simulation step and save... at the end".
+
+                            // Let's just keep last 100 for display, but full array for saving?
+                            // Actually, if we slice, we lose data to save.
+                            // Let's just keep growing array for now (assuming scenario < 1 hr).
+                            return [...prev, newPoint];
                         });
                     }
                 } else {
@@ -46,7 +115,31 @@ export function MPCDashboard() {
             }
         }, 1000);
         return () => clearInterval(interval);
-    }, []);
+    }, [baselineData]); // Re-bind when baselineData loads
+
+    // 3. Save Baseline on Stop
+    useEffect(() => {
+        if (!isRunning && isBaselineRun && dataHistory.length > 100 && !hasSavedBaseline.current) {
+            saveBaseline();
+        }
+    }, [isRunning, isBaselineRun, dataHistory]);
+
+    const saveBaseline = async () => {
+        try {
+            console.log("Saving Baseline Run...", dataHistory.length);
+            await fetch(`${BASE_URL}/mpc/baseline`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(dataHistory)
+            });
+            hasSavedBaseline.current = true;
+            // Optionally, we load it back as baseline so next time it shows dotted?
+            // setBaselineData(dataHistory);
+            // setIsBaselineRun(false);
+        } catch (e) {
+            console.error("Failed to save baseline:", e);
+        }
+    };
 
     const handleActivateMPC = async () => {
         if (!isRunning) {
@@ -88,7 +181,11 @@ export function MPCDashboard() {
                             {isConnected ? 'Online' : 'Offline'}
                         </span>
                     </h1>
-                    <p className="text-slate-400 text-sm">Model Predictive Control Traffic Signal Optimization</p>
+                    <p className="text-slate-400 text-sm flex items-center gap-2">
+                        Model Predictive Control Traffic Signal Optimization
+                        {isBaselineRun && <span className="text-amber-400 text-xs px-2 py-0.5 bg-amber-400/10 border border-amber-400/50 rounded-full">Recording Baseline</span>}
+                        {baselineData && <span className="text-blue-400 text-xs px-2 py-0.5 bg-blue-400/10 border border-blue-400/50 rounded-full">Comparison Mode</span>}
+                    </p>
                 </div>
 
                 <div className="flex gap-3">
@@ -105,42 +202,44 @@ export function MPCDashboard() {
 
                     <button
                         onClick={handleNormalSignals}
-                        className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-all shadow-lg ${!mpcActive && isRunning
-                            ? 'bg-slate-600 text-white ring-2 ring-slate-500 ring-offset-2 ring-offset-[#0B1120]'
-                            : 'bg-slate-700 text-slate-200 hover:bg-slate-600'
+                        className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-colors ${!mpcActive && isRunning
+                            ? 'bg-slate-700 text-white border border-slate-500'
+                            : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
                             }`}
                     >
-                        <Pause size={16} />
+                        <Settings size={16} />
                         Normal Signals
                     </button>
 
-                    {isRunning && (
-                        <button
-                            onClick={handleStop}
-                            className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-all bg-rose-500/10 text-rose-400 border border-rose-500/50 hover:bg-rose-500/20"
-                        >
-                            <Square size={16} fill="currentColor" /> Stop
-                        </button>
-                    )}
+                    <button
+                        onClick={handleStop}
+                        className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold bg-rose-500/10 text-rose-400 border border-rose-500/50 hover:bg-rose-500/20 transition-colors"
+                    >
+                        <Square size={16} fill="currentColor" />
+                        Stop
+                    </button>
                 </div>
             </div>
 
             <div className="flex border-b border-slate-800 mb-6">
-                {[
-                    { id: 'monitor', label: 'Real-time Monitor', icon: Activity },
-                    { id: 'config', label: 'Controller Config', icon: Sliders },
-                ].map(tab => (
-                    <button
-                        key={tab.id}
-                        onClick={() => setActiveSubTab(tab.id)}
-                        className={`flex items-center gap-2 px-6 py-3 text-sm font-medium border-b-2 transition-colors ${activeSubTab === tab.id
-                            ? 'border-indigo-500 text-indigo-400'
-                            : 'border-transparent text-slate-400 hover:text-slate-200'
-                            }`}
-                    >
-                        <tab.icon size={16} /> {tab.label}
-                    </button>
-                ))}
+                <button
+                    onClick={() => setActiveSubTab('monitor')}
+                    className={`flex items-center gap-2 px-6 py-3 text-sm font-medium border-b-2 transition-colors ${activeSubTab === 'monitor'
+                        ? 'border-indigo-500 text-indigo-400'
+                        : 'border-transparent text-slate-400 hover:text-slate-200'
+                        }`}
+                >
+                    <Activity size={16} /> Real-time Monitor
+                </button>
+                <button
+                    onClick={() => setActiveSubTab('config')}
+                    className={`flex items-center gap-2 px-6 py-3 text-sm font-medium border-b-2 transition-colors ${activeSubTab === 'config'
+                        ? 'border-indigo-500 text-indigo-400'
+                        : 'border-transparent text-slate-400 hover:text-slate-200'
+                        }`}
+                >
+                    <Settings size={16} /> Controller Config
+                </button>
             </div>
 
             <div className="flex-1 overflow-y-auto pr-2 scrollbar-thin scrollbar-thumb-slate-800 scrollbar-track-transparent">

@@ -8,6 +8,12 @@ import torch.optim as optim
 import numpy as np
 import os
 import logging
+import sys
+import os
+
+# Add src to path so traffic_mpc can be imported
+sys.path.append(os.path.join(os.path.dirname(__file__), "src"))
+
 from traffic_mpc.config.settings import SumoConfig, MPCConfig, AppConfig
 from traffic_mpc.interface.sumo_client import SumoClient
 from traffic_mpc.core.prediction import TrafficLSTM
@@ -20,9 +26,12 @@ def generate_data(steps=3000):
     logger.info("--- Generating Training Data ---")
     
     # 1. Setup Config
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    scenario_path = os.path.join(base_dir, "../emergency_vehicle_preemption/simulation/config/katunayake.sumocfg")
+    
     sumo_cfg = SumoConfig(
         sumo_binary="sumo", # Headless for speed
-        config_file="conf/network/grid_3x3.sumocfg",
+        config_file=scenario_path,
         use_gui=False
     )
     

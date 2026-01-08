@@ -42,8 +42,9 @@ def generate_e2_detectors(net_file, output_file):
     print(f"Successfully generated detectors: {output_file}")
 
 if __name__ == "__main__":
-    NET_FILE = Path("conf/network/grid_3x3.net.xml")
-    ADD_FILE = Path("conf/network/grid_3x3.add.xml")
+    base_dir = Path(__file__).parent.parent.parent
+    NET_FILE = base_dir / "services/emergency_vehicle_preemption/simulation/networks/katunayake.net.xml"
+    ADD_FILE = base_dir / "services/emergency_vehicle_preemption/simulation/config/katunayake.add.xml"
     
     if not NET_FILE.exists():
         print(f"Error: Network file {NET_FILE} not found. Run generate_scenario.py first.")
