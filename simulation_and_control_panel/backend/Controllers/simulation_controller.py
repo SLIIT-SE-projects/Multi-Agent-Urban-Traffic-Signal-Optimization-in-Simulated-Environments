@@ -254,7 +254,10 @@ class SimulationController:
                         
                     avg_speed = (total_speed / valid_lanes) if valid_lanes > 0 else 0
                     
-                    print(f"🚦 MPC Step: {self.current_step} | Max Queue: {max_queue} veh | Avg Speed: {avg_speed:.2f} m/s | Total Wait: {total_waiting:.1f} s")
+                    # Determine the name based on the class of the loaded optimizer
+                    opt_name = "GNN" if "GNN" in self.optimizer.__class__.__name__ else "MPC"
+
+                    print(f"🚦 {opt_name} Step: {self.current_step} | Max Queue: {max_queue} veh | Avg Speed: {avg_speed:.2f} m/s | Total Wait: {total_waiting:.1f} s")
                     
                     actions = self.optimizer.predict(snapshot)
                     self._apply_ai_actions(actions)
