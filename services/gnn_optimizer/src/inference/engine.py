@@ -70,15 +70,42 @@ class RealTimeInferenceEngine:
                     snapshot = self.manager.get_snapshot()
                     data = self.graph_builder.create_hetero_data(snapshot)
                     
+                    # 1. Enable Uncertainty Mode
+                    self.model.mc_dropout.enable_mc_dropout()
+
+                    action_logits_list = []
+                    num_samples = 20  # How many MC passes to run
+
                     with torch.no_grad():
-                        action_logits, _, self.hidden_state = self.model(
-                            data.x_dict, 
-                            data.edge_index_dict, 
-                            self.hidden_state
-                        )
-                    
-                    # Greedy Action
-                    chosen_phases = torch.argmax(action_logits, dim=1).tolist()
+                        # Run multiple passes for the SAME input
+                        for _ in range(num_samples):
+                            # Note: We must be careful with hidden_state here. 
+                            # Usually, for uncertainty, we reuse the SAME hidden_state input for all samples
+                            logits, _, _ = self.model(
+                                data.x_dict, 
+                                data.edge_index_dict, 
+                                self.hidden_state 
+                            )
+                            action_logits_list.append(logits)
+
+                    # 2. Calculate Mean and Variance
+                    stacked_logits = torch.stack(action_logits_list) # Shape: [20, Batch, 4]
+                    mean_logits = stacked_logits.mean(dim=0)         # The final decision
+                    uncertainty = stacked_logits.std(dim=0).sum(dim=1) # Simple uncertainty scalar per agent
+
+                    # 3. Disable Uncertainty Mode (Clean up)
+                    self.model.mc_dropout.disable_mc_dropout()
+
+                    # 4. Update the actual hidden state for the NEXT time step (Single pass)
+                    # We need one final authoritative pass to update the GRU memory correctly
+                    _, _, self.hidden_state = self.model(
+                        data.x_dict, 
+                        data.edge_index_dict, 
+                        self.hidden_state
+                    )
+
+                    # 5. Take Action based on mean_logits
+                    chosen_phases = torch.argmax(mean_logits, dim=1).tolist()
                     
                     actions_dict = {}
                     for idx, model_action in enumerate(chosen_phases):

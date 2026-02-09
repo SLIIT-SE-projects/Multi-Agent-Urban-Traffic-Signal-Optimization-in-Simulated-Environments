@@ -45,7 +45,7 @@ class RecurrentHGAT(nn.Module):
         for node_type, x in x_dict.items():
             x_dict_encoded[node_type] = F.relu(self.encoder_dict[node_type](x))
 
-        # 2. Spatial Processing (GNN)
+        # 2. [Uncertainty Injection 1]: Spatial Processing (GNN)
         x_dict_out = self.conv1(x_dict_encoded, edge_index_dict)
         
         # Apply Activation & The Custom Dropout
@@ -59,8 +59,11 @@ class RecurrentHGAT(nn.Module):
 
         # Update memory
         new_hidden_state = self.gru(intersection_embeddings, hidden_state)
+
+        # [Uncertainty Injection 2]: Policy Decision Boundary (Recommended Addition)
+        policy_input = self.mc_dropout(new_hidden_state)
         
         # 4. Decision Making (Actor & Critic)
-        action_logits, state_value = self.policy_head(new_hidden_state)
+        action_logits, state_value = self.policy_head(policy_input)
         
         return action_logits, state_value, new_hidden_state
