@@ -271,29 +271,46 @@ class GreenWaveController:
                 self.safety_blocked = False
                 return
 
-            target_green_map = {}
+            target_green_map = {} 
             current_speed = traci.vehicle.getSpeed(self.ev_id)
             planning_speed = max(current_speed, 10.0)
+
+            # Reset safety flag
             self.safety_blocked = False
-            immediate_is_safe = True
 
+            # Iterate through upcoming intersections sequentially
             for i, tls_info in enumerate(next_tls_list):
-                t_id, t_index, t_dist = tls_info[0], tls_info[1], tls_info[2]
-                t_eta = eta_first_light if i == 0 else t_dist / planning_speed
+                t_id = tls_info[0]
+                t_index = tls_info[1]
+                t_dist = tls_info[2]
+                
+                if i == 0: 
+                    t_eta = eta_first_light
+                else: 
+                    t_eta = t_dist / planning_speed
 
+                # Trigger Condition: EV is within 30s or 100m
                 if t_eta < 30.0 or t_dist < 100.0:
-                    if i == 0:
-                        immediate_is_safe = self._evaluate_safety(t_id)
-                        if immediate_is_safe:
-                            target_green_map[t_id] = t_index
-                        else:
-                            self.safety_blocked = True
-                            print(f"⚠️ SAFETY GUARD ACTIVE: Preemption denied at {t_id}")
-                            break 
+                    
+                    # Evaluate safety for THIS specific intersection in the chain
+                    is_safe = self._evaluate_safety(t_id)
+                    
+                    if is_safe:
+                        # It is cleared/safe. Add to preemption map and continue to next downstream light.
+                        target_green_map[t_id] = t_index
                     else:
-                        if immediate_is_safe:
-                            target_green_map[t_id] = t_index
+                        # THE CHAIN BREAKS HERE.
+                        # We only preempt downstream IF all upstream route intersections are cleared.
+                        if i == 0:
+                            self.safety_blocked = True
+                            print(f"⚠️ SAFETY GUARD: Immediate intersection {t_id} is unsafe. Preemption Denied.")
+                        else:
+                            print(f"⚠️ SAFETY GUARD: Downstream {t_id} is unsafe. Halting Green Wave extension.")
+                        
+                        # Stop checking downstream. Do not preempt this or any further intersections!
+                        break 
 
+            # Apply Controls
             current_active = list(self.active_override_tls_ids)
             for old_id in current_active:
                 if old_id not in target_green_map:
