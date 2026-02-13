@@ -269,6 +269,7 @@ class GreenWaveController:
                 for old_id in list(self.active_override_tls_ids):
                     self._release_control(old_id)
                 self.safety_blocked = False
+                self.active_override_tls_ids.clear() # Ensure total cleanup
                 return
 
             target_green_map = {} 
@@ -278,21 +279,24 @@ class GreenWaveController:
             # Reset safety flag
             self.safety_blocked = False
 
-            # Iterate through upcoming intersections sequentially
+             # Iterate through upcoming intersections sequentially
             for i, tls_info in enumerate(next_tls_list):
                 t_id = tls_info[0]
                 t_index = tls_info[1]
                 t_dist = tls_info[2]
                 
-                if i == 0: 
-                    t_eta = eta_first_light
-                else: 
-                    t_eta = t_dist / planning_speed
+                if i == 0: t_eta = eta_first_light
+                else: t_eta = t_dist / planning_speed
 
-                # Trigger Condition: EV is within 30s or 100m
                 if t_eta < 30.0 or t_dist < 100.0:
                     
-                    # Evaluate safety for THIS specific intersection in the chain
+                    # --- FIX: THE LOCK-IN MECHANISM ---
+                    # If we already locked this light, keep it locked. Do not re-evaluate!
+                    if t_id in self.active_override_tls_ids:
+                        target_green_map[t_id] = t_index
+                        continue # Skip to the next intersection in the chain
+
+                    # If it is a NEW intersection, ask the AI Gatekeeper
                     is_safe = self._evaluate_safety(t_id)
                     
                     if is_safe:
@@ -322,7 +326,6 @@ class GreenWaveController:
 
         except Exception as e:
             print(f"Preemption Logic Error: {e}")
-
     def _force_green_wave(self, tls_id, tls_index):
         try:
             logic = traci.trafficlight.getAllProgramLogics(tls_id)[0]
