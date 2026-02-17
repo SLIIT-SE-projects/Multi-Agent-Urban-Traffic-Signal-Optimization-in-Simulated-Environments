@@ -18,7 +18,7 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 MODEL_PATH = os.path.join(BASE_DIR, "../models/saved/eta_predictor.h5")
 SCALER_PATH = os.path.join(BASE_DIR, "../data/scalers/eta_scaler.pkl")
 SAFETY_MODEL_PATH = os.path.join(BASE_DIR, "../models/saved/outcome_safety_classifier.pkl")
-SUMO_CONFIG = os.path.join(BASE_DIR, "../simulation/config/colombo_mega_scenario.sumocfg") 
+SUMO_CONFIG = os.path.join(BASE_DIR, "../simulation/config/colombo_mega_scenario.sumocfg")
 
 # Initialize FastAPI
 app = FastAPI()
@@ -199,6 +199,7 @@ class GreenWaveController:
                             "ev_id": ev,
                             "priority": bid_priority,
                             "eta": t_eta,
+                            "speed": data["speed"],
                             "tls_index": t_index,
                             "order": i # Track if it's the immediate light (0) or downstream
                         })
@@ -208,8 +209,8 @@ class GreenWaveController:
         provisional_wins = {ev: [] for ev in self.fleet.keys()} # {ev_id: [tls_id_1, tls_id_2]}
 
         for tls_id, bids in intersection_bids.items():
-            # Hierarchy of Needs: Sort by Priority (Desc), then ETA (Asc)
-            bids.sort(key=lambda x: (-x["priority"], x["eta"]))
+            # Hierarchy of Needs: Sort by Priority (Desc), then ETA (Asc), then Speed (Desc)
+            bids.sort(key=lambda x: (-x["priority"], x["eta"], -x["speed"]))
             winner = bids[0]
             provisional_wins[winner["ev_id"]].append({
                 "tls_id": tls_id, 
@@ -392,9 +393,25 @@ class GreenWaveController:
                 if owner == self.ev_id:
                     try:
                         j_pos = traci.junction.getPosition(tls_id)
+                    except Exception:
+                        try:
+                            # Fallback if tls_id is not a valid junction ID
+                            links = traci.trafficlight.getControlledLinks(tls_id)
+                            if links and len(links) > 0 and len(links[0]) > 0:
+                                in_lane = links[0][0][0]
+                                shape = traci.lane.getShape(in_lane)
+                                j_pos = shape[-1] # Last point of incoming lane
+                            else:
+                                continue
+                        except Exception as e:
+                            print(f"Failed to resolve position for TLS {tls_id}: {e}")
+                            continue
+                    
+                    try:
                         j_lon, j_lat = traci.simulation.convertGeo(j_pos[0], j_pos[1])
                         active_junctions.append({"id": tls_id, "lat": j_lat, "lon": j_lon})
-                    except: pass
+                    except Exception as e:
+                        print(f"Geo conversion failed for {tls_id}: {e}")
 
             return {
                 "type": "status",
