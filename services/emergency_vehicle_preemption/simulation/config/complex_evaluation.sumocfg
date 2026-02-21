@@ -1,0 +1,10 @@
+<configuration>
+    <input>
+        <net-file value="../networks/complex_evaluation.net.xml"/>
+        <route-files value="../routes/complex_evaluation.rou.xml"/>
+    </input>
+    <time>
+        <begin value="0"/>
+        <end value="4500"/>
+    </time>
+</configuration>
