@@ -7,7 +7,7 @@ from sklearn.metrics import classification_report, confusion_matrix
 
 # --- CONFIGURATION ---
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-DATA_PATH = os.path.join(BASE_DIR, "../data/raw/outcome_based_safety_data.csv")
+DATA_PATH = os.path.join(BASE_DIR, "../data/raw/massive_safety_data.csv")
 MODEL_DIR = os.path.join(BASE_DIR, "../models/saved")
 os.makedirs(MODEL_DIR, exist_ok=True)
 
@@ -44,13 +44,13 @@ def train_safety_model():
     )
 
     print("\n--- 2. TRAINING DECISION TREE ---")
-    # We use class_weight="balanced" because UNSAFE scenarios might be rare.
-    # This heavily penalizes the model if it misses an UNSAFE situation (False Negative).
-    # We restrict max_depth to prevent overfitting and keep the rules interpretable.
+    # We use explict class weights because UNSAFE (1) scenarios are the majority, 
+    # but missing an UNSAFE situation (False SAFE) is a catastrophic failure.
+    # We heavily penalize misclassifying 1 (UNSAFE).
     clf = DecisionTreeClassifier(
         max_depth=5, 
         min_samples_leaf=10, 
-        class_weight="balanced", 
+        class_weight={0: 1.0, 1: 10.0}, # 10x penalty for guessing "SAFE" when it's "UNSAFE"
         random_state=42
     )
     
