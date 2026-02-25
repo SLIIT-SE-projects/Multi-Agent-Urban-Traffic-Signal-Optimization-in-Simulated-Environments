@@ -28,6 +28,7 @@ class SimulationController:
         self.auto_stepping = False
         self.auto_step_thread = None
         self.step_lock = threading.Lock()  # Lock for thread-safe stepping
+        self.stopping = False  # True while background teardown is in progress
         self.optimizer = None
         self.optimization_enabled = False
         self.action_interval = 15
@@ -465,6 +466,9 @@ class SimulationController:
 
     def start(self):
         """Start the simulation"""
+        if self.stopping:
+            return {"status": "error", "message": "Simulation is still shutting down, please wait a moment"}
+
         if self.is_running:
             return {"status": "error", "message": "Simulation already running"}
             
@@ -613,18 +617,37 @@ class SimulationController:
         """Stop and close simulation"""
         if not self.is_running:
             return {"status": "error", "message": "Simulation not running"}
-            
-        try:
-            self.auto_stepping = False
-            if self.auto_step_thread:
-                self.auto_step_thread.join(timeout=2)
-            
-            traci.close()
-            self.is_running = False
-            self.is_paused = False
-            self.current_step = 0
-            print("Simulation stopped")
-            return {"status": "success", "message": "Simulation stopped"}
-        except Exception as e:
-            return {"status": "error", "message": str(e)}
+
+        if self.stopping:
+            return {"status": "error", "message": "Simulation is already shutting down"}
+
+        # Immediately update state so no new steps / starts can be issued
+        self.auto_stepping = False
+        self.is_running = False
+        self.is_paused = False
+        self.stopping = True
+
+        # Capture thread reference before clearing it
+        auto_step_thread = self.auto_step_thread
+
+        def _teardown():
+            """Run blocking SUMO teardown in background so the HTTP response returns fast."""
+            try:
+                # Wait for the auto-step loop to exit (it checks is_running / auto_stepping)
+                if auto_step_thread and auto_step_thread.is_alive():
+                    auto_step_thread.join(timeout=2)
+
+                # traci.close() blocks until SUMO fully exits — safe to do here in background
+                traci.close()
+                self.current_step = 0
+                print("Simulation stopped (teardown complete)")
+            except Exception as e:
+                print(f"Error during simulation teardown: {e}")
+            finally:
+                self.stopping = False
+
+        teardown_thread = threading.Thread(target=_teardown, daemon=True)
+        teardown_thread.start()
+
+        return {"status": "success", "message": "Simulation stopped"}
     

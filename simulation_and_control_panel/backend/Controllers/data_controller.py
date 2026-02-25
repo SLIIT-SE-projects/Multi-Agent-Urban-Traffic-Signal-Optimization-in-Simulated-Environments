@@ -88,7 +88,8 @@ class DataController:
             "is_running": self.sim_controller.is_running,
             "is_paused": self.sim_controller.is_paused,
             "current_step": self.sim_controller.current_step,
-            "auto_stepping": self.sim_controller.auto_stepping
+            "auto_stepping": self.sim_controller.auto_stepping,
+            "stopping": self.sim_controller.stopping
         }
     
     def get_vehicle_count(self):
