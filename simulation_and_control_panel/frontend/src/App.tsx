@@ -12,6 +12,7 @@ function App() {
     is_paused: false,
     current_step: 0,
     auto_stepping: false,
+    stopping: false,
   })
 
   useEffect(() => {
@@ -92,6 +93,11 @@ function App() {
                   {simulationStatus.auto_stepping ? '✓' : '✗'}
                 </p>
               </div>
+              {simulationStatus.stopping && (
+                <div className="bg-orange-50 p-4 rounded col-span-2 md:col-span-4">
+                  <p className="text-orange-700 text-sm font-medium animate-pulse">⏳ Waiting for SUMO to fully close...</p>
+                </div>
+              )}
             </div>
           </div>
         )}
@@ -132,6 +138,7 @@ function App() {
               onRefresh={fetchStatus}
               isRunning={simulationStatus.is_running}
               isPaused={simulationStatus.is_paused}
+              isStopping={simulationStatus.stopping}
             />
             
             {mode === 'manual' && (

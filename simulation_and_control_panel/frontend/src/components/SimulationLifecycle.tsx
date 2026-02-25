@@ -5,12 +5,14 @@ interface SimulationLifecycleProps {
   onRefresh?: () => void
   isRunning?: boolean
   isPaused?: boolean
+  isStopping?: boolean
 }
 
 export function SimulationLifecycle({
   onRefresh,
   isRunning = false,
   isPaused = false,
+  isStopping = false,
 }: SimulationLifecycleProps) {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -41,10 +43,10 @@ export function SimulationLifecycle({
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <button
           onClick={() => handleAction(startSimulation, 'Start')}
-          disabled={loading || isRunning}
+          disabled={loading || isRunning || isStopping}
           className="bg-green-600 hover:bg-green-700 disabled:bg-gray-400 text-white font-semibold py-3 px-4 rounded transition"
         >
-          Start
+          {isStopping ? 'Closing...' : 'Start'}
         </button>
 
         <button
