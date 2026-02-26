@@ -25,4 +25,11 @@ export const stopAutoStep = () => apiClient.post('/simulation/auto-step/stop')
 // Status
 export const getStatus = () => apiClient.get('/simulation/status')
 
+// Scenarios
+export const getScenarios = () => apiClient.get('/scenarios')
+export const getCurrentScenario = () => apiClient.get('/simulation/current-scenario')
+export const switchScenario = (scenarioName: string) =>
+  apiClient.post('/simulation/switch-scenario', { scenario_name: scenarioName })
+export const reloadScenario = () => apiClient.post('/simulation/reload')
+
 export default apiClient

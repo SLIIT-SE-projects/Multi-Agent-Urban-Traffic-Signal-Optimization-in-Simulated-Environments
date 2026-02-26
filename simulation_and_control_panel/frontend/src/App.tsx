@@ -3,6 +3,7 @@ import { healthCheck, getStatus } from './services/api'
 import { SimulationLifecycle } from './components/SimulationLifecycle'
 import { ManualControls } from './components/ManualControls'
 import { AutoSteppingControls } from './components/AutoSteppingControls'
+import { ScenarioSelector } from './components/ScenarioSelector'
 
 function App() {
   const [backendStatus, setBackendStatus] = useState<'checking' | 'connected' | 'error'>('checking')
@@ -129,6 +130,14 @@ function App() {
               </button>
             </div>
           </div>
+        )}
+
+        {/* Scenario Selector */}
+        {backendStatus === 'connected' && (
+          <ScenarioSelector
+            onSwitch={fetchStatus}
+            isRunning={simulationStatus.is_running}
+          />
         )}
 
         {/* Controls */}

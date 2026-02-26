@@ -491,6 +491,15 @@ class SimulationController:
                 "auto_stepping": self.auto_stepping
             }
         except Exception as e:
+            # traci.start() may have partially opened a connection/process before
+            # failing (e.g. SUMO config error). Clean it up so the next Start call
+            # doesn't stack another SUMO process on top.
+            try:
+                traci.close()
+            except Exception:
+                pass
+            self.is_running = False
+            self.stopping = False
             return {"status": "error", "message": str(e)}
     
     def step(self):
