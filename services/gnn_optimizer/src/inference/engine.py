@@ -2,7 +2,6 @@ import os
 import sys
 import torch
 import torch.nn.functional as F
-from torch_geometric.data import Batch
 
 # SYSTEM PATH FIX
 project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
@@ -70,42 +69,42 @@ class RealTimeInferenceEngine:
                     
                     snapshot = self.manager.get_snapshot()
                     data = self.graph_builder.create_hetero_data(snapshot)
-                    num_intersections = data['intersection'].x.shape[0]
                     
                     # 1. Enable Uncertainty Mode
                     self.model.mc_dropout.enable_mc_dropout()
-                    num_samples = 20  
 
-                    # 2. Vectorized Batching
-                    batched_data = Batch.from_data_list([data] * num_samples)
-                    batched_hidden = self.hidden_state.repeat(num_samples, 1) if self.hidden_state is not None else None
+                    action_logits_list = []
+                    num_samples = 20  # How many MC passes to run
 
                     with torch.no_grad():
-                        # Single pass for all 20 samples
-                        batched_logits, _, _ = self.model(
-                            batched_data.x_dict, 
-                            batched_data.edge_index_dict, 
-                            batched_hidden 
-                        )
-                    
-                    # 3. Calculate Mean and Variance Vectorized
-                    # Reshape to [20, num_intersections, num_actions]
-                    stacked_logits = batched_logits.view(num_samples, num_intersections, -1)
-                    
-                    mean_logits = stacked_logits.mean(dim=0)         # Shape: [Intersections, Actions]
-                    uncertainty = stacked_logits.std(dim=0).sum(dim=1) # Per-agent uncertainty scalar
+                        # Run multiple passes for the SAME input
+                        for _ in range(num_samples):
+                            # Note: We must be careful with hidden_state here. 
+                            # Usually, for uncertainty, we reuse the SAME hidden_state input for all samples
+                            logits, _, _ = self.model(
+                                data.x_dict, 
+                                data.edge_index_dict, 
+                                self.hidden_state 
+                            )
+                            action_logits_list.append(logits)
 
-                    # 4. Disable Uncertainty Mode (Clean up)
+                    # 2. Calculate Mean and Variance
+                    stacked_logits = torch.stack(action_logits_list) # Shape: [20, Batch, 4]
+                    mean_logits = stacked_logits.mean(dim=0)         # The final decision
+                    uncertainty = stacked_logits.std(dim=0).sum(dim=1) # Simple uncertainty scalar per agent
+
+                    # 3. Disable Uncertainty Mode (Clean up)
                     self.model.mc_dropout.disable_mc_dropout()
 
-                    # 5. Update the actual hidden state for the NEXT time step
+                    # 4. Update the actual hidden state for the NEXT time step (Single pass)
+                    # We need one final authoritative pass to update the GRU memory correctly
                     _, _, self.hidden_state = self.model(
                         data.x_dict, 
                         data.edge_index_dict, 
                         self.hidden_state
                     )
 
-                    # 6. Take Action based on mean_logits
+                    # 5. Take Action based on mean_logits
                     chosen_phases = torch.argmax(mean_logits, dim=1).tolist()
                     
                     actions_dict = {}

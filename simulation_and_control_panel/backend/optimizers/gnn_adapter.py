@@ -2,7 +2,6 @@ import sys
 import os
 import torch
 import torch.nn.functional as F
-from torch_geometric.data import Batch
 
 # ==============================================================================
 # 1. PATH FIX: Register 'gnn_optimizer' directory
@@ -106,48 +105,42 @@ class GNNTrafficOptimizer:
     def predict(self, raw_sumo_data):
         # 1. Data Prep
         data = self.engine.graph_builder.create_hetero_data(raw_sumo_data)
-        num_intersections = data['intersection'].x.shape[0]
         
         # ---------------------------------------------------------
-        # [START] VECTORIZED UNCERTAINTY LOGIC
+        # [START] UPDATED UNCERTAINTY LOGIC
         # ---------------------------------------------------------
+        
         self.engine.model.mc_dropout.enable_mc_dropout()
-        num_samples = 20
-
-        # Duplicate the graph 20 times into a single Mega-Graph batch
-        batched_data = Batch.from_data_list([data] * num_samples)
-
-        # We must also duplicate the GRU hidden state to match the batch size
-        if self.hidden_state is not None:
-            batched_hidden = self.hidden_state.repeat(num_samples, 1)
-        else:
-            batched_hidden = None
-
-        # Execute all 20 samples in ONE SINGLE forward pass
-        with torch.no_grad():
-            batched_logits, _, _ = self.engine.model(
-                batched_data.x_dict, 
-                batched_data.edge_index_dict, 
-                batched_hidden
-            )
-            
-            # Convert Logits to Probabilities
-            batched_probs = F.softmax(batched_logits, dim=1)
-            
-            # Reshape back to [Samples, Intersections, Actions]
-            # PyTorch Geometric batches nodes sequentially, so reshaping works perfectly
-            stacked_probs = batched_probs.view(num_samples, num_intersections, -1)
-
-        # Calculate Statistics instantly using matrix math
-        mean_probs = stacked_probs.mean(dim=0)          # Shape: [Intersections, Actions]
-        std_probs = stacked_probs.std(dim=0)            # Shape: [Intersections, Actions]
         
-        # Global Uncertainty is the mean of the standard deviations
-        uncertainty_score = std_probs.mean().item()
+        num_samples = 20
+        probability_samples = []  # Changed list name for clarity
+
+        with torch.no_grad():
+            for _ in range(num_samples):
+                # Get raw logits
+                sample_logits, _, _ = self.engine.model(
+                    data.x_dict, 
+                    data.edge_index_dict, 
+                    self.hidden_state
+                )
+                
+                # --- FIX: Convert Logits to Probabilities (0.0 to 1.0) ---
+                sample_probs = F.softmax(sample_logits, dim=1)
+                probability_samples.append(sample_probs)
+
+        # Calculate Statistics on PROBABILITIES
+        stack = torch.stack(probability_samples) # Shape: [20, Batch, Actions]
+        
+        # The Action is the MEAN of probabilities
+        mean_probs = stack.mean(dim=0)
+        
+        # Uncertainty = Standard Deviation of Probabilities
+        # A value of 0.1 means the confidence fluctuates by 10%
+        uncertainty_score = stack.std(dim=0).mean().item()
 
         self.engine.model.mc_dropout.disable_mc_dropout()
 
-        # Update actual state (Single Deterministic pass to step the GRU forward properly)
+        # Update state (Deterministic pass)
         with torch.no_grad():
             _, _, self.hidden_state = self.engine.model(
                 data.x_dict, 
@@ -157,20 +150,21 @@ class GNNTrafficOptimizer:
 
         print(f"📊 GNN Confidence | Uncertainty (Prob. StdDev): {uncertainty_score:.5f}")
         
+        # Adjust Threshold: 0.1 is now a significant fluctuation in probability
         if uncertainty_score > 0.15: 
              print("⚠️  High Model Uncertainty Detected!")
-             # TODO: We will trigger the Manual Override fallback here later
 
         # ---------------------------------------------------------
-        # [END] VECTORIZED UNCERTAINTY LOGIC
+        # [END] UPDATED LOGIC
         # ---------------------------------------------------------
         
         # 3. Select Action from Mean Probabilities
         chosen_phases = torch.argmax(mean_probs, dim=1).tolist()
         
+        # ... rest of your mapping code ...
         idx_to_id = {v: k for k, v in self.engine.graph_builder.tls_map.items()}
         actions_dict = {}
-        
+        # ... (keep existing loop) ...
         for idx, model_action in enumerate(chosen_phases):
             if idx not in idx_to_id: continue
             tls_id = idx_to_id[idx]
