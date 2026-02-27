@@ -1,6 +1,7 @@
 import sys
 import os
 import torch
+import torch.nn.functional as F
 
 # ==============================================================================
 # 1. PATH FIX: Register 'gnn_optimizer' directory
@@ -102,35 +103,72 @@ class GNNTrafficOptimizer:
         self.hidden_state = None
 
     def predict(self, raw_sumo_data):
-        """
-        Input: Snapshot dictionary from DataController
-        Output: Dictionary of {tls_id: phase_index}
-        """
-        # Reuse logic from your Engine's run loop
-        
         # 1. Data Prep
         data = self.engine.graph_builder.create_hetero_data(raw_sumo_data)
         
-        # 2. Inference
+        # ---------------------------------------------------------
+        # [START] UPDATED UNCERTAINTY LOGIC
+        # ---------------------------------------------------------
+        
+        self.engine.model.mc_dropout.enable_mc_dropout()
+        
+        num_samples = 20
+        probability_samples = []  # Changed list name for clarity
+
         with torch.no_grad():
-            action_logits, _, self.hidden_state = self.engine.model(
+            for _ in range(num_samples):
+                # Get raw logits
+                sample_logits, _, _ = self.engine.model(
+                    data.x_dict, 
+                    data.edge_index_dict, 
+                    self.hidden_state
+                )
+                
+                # --- FIX: Convert Logits to Probabilities (0.0 to 1.0) ---
+                sample_probs = F.softmax(sample_logits, dim=1)
+                probability_samples.append(sample_probs)
+
+        # Calculate Statistics on PROBABILITIES
+        stack = torch.stack(probability_samples) # Shape: [20, Batch, Actions]
+        
+        # The Action is the MEAN of probabilities
+        mean_probs = stack.mean(dim=0)
+        
+        # Uncertainty = Standard Deviation of Probabilities
+        # A value of 0.1 means the confidence fluctuates by 10%
+        uncertainty_score = stack.std(dim=0).mean().item()
+
+        self.engine.model.mc_dropout.disable_mc_dropout()
+
+        # Update state (Deterministic pass)
+        with torch.no_grad():
+            _, _, self.hidden_state = self.engine.model(
                 data.x_dict, 
                 data.edge_index_dict, 
                 self.hidden_state
             )
+
+        print(f"📊 GNN Confidence | Uncertainty (Prob. StdDev): {uncertainty_score:.5f}")
         
-        # 3. Greedy Action Selection
-        chosen_phases = torch.argmax(action_logits, dim=1).tolist()
+        # Adjust Threshold: 0.1 is now a significant fluctuation in probability
+        if uncertainty_score > 0.15: 
+             print("⚠️  High Model Uncertainty Detected!")
+
+        # ---------------------------------------------------------
+        # [END] UPDATED LOGIC
+        # ---------------------------------------------------------
         
-        # 4. Map to IDs (Reuse logic)
+        # 3. Select Action from Mean Probabilities
+        chosen_phases = torch.argmax(mean_probs, dim=1).tolist()
+        
+        # ... rest of your mapping code ...
         idx_to_id = {v: k for k, v in self.engine.graph_builder.tls_map.items()}
         actions_dict = {}
-        
+        # ... (keep existing loop) ...
         for idx, model_action in enumerate(chosen_phases):
             if idx not in idx_to_id: continue
             tls_id = idx_to_id[idx]
             
-            # Use the simple mapping logic from your engine.py
             manager_target_idx = 0 
             if model_action == 0: manager_target_idx = 0 
             elif model_action == 1: manager_target_idx = 1

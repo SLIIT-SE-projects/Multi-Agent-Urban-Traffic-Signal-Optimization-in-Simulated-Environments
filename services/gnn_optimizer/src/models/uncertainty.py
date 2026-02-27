@@ -1,4 +1,5 @@
 import torch.nn as nn
+import torch.nn.functional as F
 from src.config import ModelConfig
 
 class BayesianDropout(nn.Module):
@@ -6,14 +7,12 @@ class BayesianDropout(nn.Module):
     def __init__(self, p=ModelConfig.DROPOUT_RATE):
         super().__init__()
         self.p = p
-        self.dropout = nn.Dropout(p=p)
-        self.force_on = False # Toggle this to True during uncertainty estimation
+        self.force_on = False 
 
     def forward(self, x):
-        # If we are training, OR if we forced it on (for uncertainty), use dropout
-        if self.training or self.force_on:
-            return self.dropout(x)
-        return x
+        # We use F.dropout and manually control the 'training' flag.
+        # This forces dropout to apply if force_on is True, even if model.eval() was called.
+        return F.dropout(x, p=self.p, training=self.training or self.force_on)
 
     def enable_mc_dropout(self):
         self.force_on = True
