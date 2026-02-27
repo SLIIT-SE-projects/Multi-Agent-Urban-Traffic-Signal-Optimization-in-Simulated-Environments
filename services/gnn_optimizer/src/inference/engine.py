@@ -74,7 +74,7 @@ class RealTimeInferenceEngine:
                     
                     # 1. Enable Uncertainty Mode
                     self.model.mc_dropout.enable_mc_dropout()
-                    num_samples = 20  
+                    num_samples = TrainConfig.MC_SAMPLES 
 
                     # 2. Vectorized Batching
                     batched_data = Batch.from_data_list([data] * num_samples)

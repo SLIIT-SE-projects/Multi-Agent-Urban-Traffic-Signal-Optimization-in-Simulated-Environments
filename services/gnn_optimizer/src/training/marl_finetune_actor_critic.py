@@ -40,7 +40,7 @@ VALUE_LOSS_COEF = TrainConfig.VALUE_LOSS_COEF
 ROUTE_EASY = "simulation/routes_easy.xml"
 ROUTE_MEDIUM = "simulation/routes_medium.xml"
 ROUTE_HARD = "simulation/routes_hard.xml"
-ACTIVE_ROUTE = "simulation/routes.rou.xml" # The file specified in scenario.sumocfg
+ACTIVE_ROUTE = "simulation/routes.rou.xml" 
 
 
 class RolloutBuffer:
@@ -61,8 +61,10 @@ def compute_gae(buffer, next_value, gamma, lam):
     next_value = torch.tensor(next_value, dtype=torch.float32)
     
     values = torch.cat([values, next_value.unsqueeze(0)], dim=0)
-    rewards = torch.tensor(buffer.rewards, dtype=torch.float32).unsqueeze(1)
-    dones = torch.tensor(buffer.dones, dtype=torch.float32).unsqueeze(1)
+    
+    # [FIX]: Removed unsqueeze(1) from rewards because it is now an array of [steps, num_intersections]
+    rewards = torch.tensor(np.array(buffer.rewards), dtype=torch.float32)
+    dones = torch.tensor(buffer.dones, dtype=torch.float32).unsqueeze(1) # Broadcast over agents
     
     advantages = []
     last_gae_lam = torch.zeros_like(values[0])
@@ -139,7 +141,7 @@ def select_action(logits):
     return action, m.log_prob(action)
 
 def train_marl():
-    print(" Starting PPO MARL Fine-Tuning (Corrected Logic)...")
+    print(" Starting PPO MARL Fine-Tuning (Localized Rewards)...")
     
     manager = SumoManager(SUMO_CONFIG, use_gui=False)
     graph_builder = TrafficGraphBuilder(SUMO_NET)
@@ -180,8 +182,8 @@ def train_marl():
     for episode in range(1, EPISODES + 1):
 
          # Switch Logic
-        if episode <= 20: source = ROUTE_EASY
-        elif episode <= 50: source = ROUTE_MEDIUM
+        if episode <= 10: source = ROUTE_EASY
+        elif episode <= 30: source = ROUTE_MEDIUM
         else: source = ROUTE_HARD
 
         # Copy file
@@ -195,7 +197,8 @@ def train_marl():
         ep_queue_sum = 0 
         ep_loss = 0      
         
-        interval_reward = 0
+        # [FIX]: Initialize as an array of zeros per intersection
+        interval_reward = np.zeros(graph_builder.num_intersections)
         step_counter = 0
         
         # Track last switch time for each intersection to enforce Min Green
@@ -251,7 +254,8 @@ def train_marl():
                 manager.apply_actions(actions_dict)
                 
                 if step_counter > 0:
-                    buffer.rewards.append(interval_reward) 
+                    # [FIX]: Use .copy() so the list stores distinct arrays over time
+                    buffer.rewards.append(interval_reward.copy()) 
                     buffer.dones.append(0) 
                 
                 buffer.states.append(data)
@@ -260,7 +264,8 @@ def train_marl():
                 buffer.values.append(value.detach().cpu().numpy().flatten())
                 buffer.hidden_states.append(h_in)
                 
-                interval_reward = 0
+                # [FIX]: Reset array
+                interval_reward = np.zeros(graph_builder.num_intersections)
                 step_counter += 1
 
             manager.step()
@@ -268,13 +273,16 @@ def train_marl():
             # Data Collection
             if t > 0:
                 snap = manager.get_snapshot()
-                r = calculate_reward(snap)
-                interval_reward += r
-                ep_reward += r
+                # [FIX]: Pass graph_builder to localized function
+                r_array = calculate_reward(snap, graph_builder)
+                interval_reward += r_array
+                # [FIX]: Sum the array to track total global reward for logging only
+                ep_reward += np.sum(r_array)
                 ep_queue_sum += sum([l['queue_length'] for l in snap['lanes'].values()])
         
         if len(buffer.states) > len(buffer.rewards):
-            buffer.rewards.append(interval_reward)
+            # [FIX]
+            buffer.rewards.append(interval_reward.copy())
             buffer.dones.append(1) 
             
         manager.close()
@@ -338,8 +346,11 @@ def evaluate_model(model, graph_builder, episode_num):
             
             eval_manager.step()
             next_snapshot = eval_manager.get_snapshot()
-            reward = calculate_reward(next_snapshot)
-            total_eval_reward += reward
+            
+            # [FIX]: Use array and sum
+            reward_array = calculate_reward(next_snapshot, graph_builder)
+            total_eval_reward += np.sum(reward_array)
+            
             current_q = sum([info['queue_length'] for info in next_snapshot['lanes'].values()])
             total_queue_len += current_q
             steps += 1
