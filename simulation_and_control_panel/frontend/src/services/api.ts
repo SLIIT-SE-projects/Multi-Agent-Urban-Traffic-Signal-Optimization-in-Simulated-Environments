@@ -9,7 +9,8 @@ const apiClient = axios.create({
 export const healthCheck = () => apiClient.get('/health')
 
 // Simulation Control
-export const startSimulation = () => apiClient.post('/simulation/start')
+export const startSimulation = (options?: { suppressDemand?: boolean }) =>
+  apiClient.post('/simulation/start', { suppress_demand: options?.suppressDemand ?? false })
 export const stepSimulation = () => apiClient.post('/simulation/step')
 export const pauseSimulation = () => apiClient.post('/simulation/pause')
 export const resumeSimulation = () => apiClient.post('/simulation/resume')

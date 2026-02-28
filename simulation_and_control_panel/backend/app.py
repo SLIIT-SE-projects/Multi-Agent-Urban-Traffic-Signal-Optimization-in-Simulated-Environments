@@ -76,7 +76,9 @@ def health_check():
 
 @app.route('/api/simulation/start', methods=['POST'])
 def start_simulation():
-    result = sim_controller.start()
+    data = request.get_json(silent=True) or {}
+    suppress_demand = bool(data.get('suppress_demand', False))
+    result = sim_controller.start(suppress_demand=suppress_demand)
     return jsonify(result)
 
 

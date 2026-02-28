@@ -379,7 +379,11 @@ class SimulationController:
         for lane in lane_ids:
             lanes[lane] = {
                 "queue_length": traci.lane.getLastStepHaltingNumber(lane),
+                "vehicle_count": traci.lane.getLastStepVehicleNumber(lane),
                 "occupancy": traci.lane.getLastStepOccupancy(lane),
+                # NOTE: SUMO returns the free-flow speed limit (not 0) when a
+                # lane is empty.  Consumers must filter by vehicle_count > 0
+                # before averaging this value.
                 "avg_speed": traci.lane.getLastStepMeanSpeed(lane),
                 "co2": traci.lane.getCO2Emission(lane),
                 "waiting_time": traci.lane.getWaitingTime(lane)
@@ -471,17 +475,36 @@ class SimulationController:
         self.is_paused = False
         return {"status": "success", "message": "Auto-stepping resumed", "step": self.current_step}
 
-    def start(self):
-        """Start the simulation"""
+    def start(self, suppress_demand: bool = False):
+        """Start the simulation.
+
+        Args:
+            suppress_demand: When True, passes ``--scale 0`` to SUMO so that no
+                pre-defined vehicles from the route/trip files are inserted.  Use
+                this when you want vehicle flow to be driven exclusively by the
+                dynamic flow-rate injection API.
+        """
         if self.stopping:
             return {"status": "error", "message": "Simulation is still shutting down, please wait a moment"}
 
         if self.is_running:
             return {"status": "error", "message": "Simulation already running"}
-            
+
+        # Reset dynamic flow state so stale rates from a previous run don't
+        # carry over into the new session.
+        self.flow_rates.clear()
+        self._flow_last_injections.clear()
+        self._flow_vehicle_counter = 0
+
         # Choose SUMO binary based on use_gui setting
         sumo_binary = "sumo-gui" if self.use_gui else "sumo"
         sumo_cmd = [sumo_binary, "-c", self.config_file, "--start"]
+
+        if suppress_demand:
+            # Scale the built-in demand to zero — none of the vehicles defined
+            # in the scenario's route/trip files will be inserted by SUMO.
+            sumo_cmd += ["--scale", "0"]
+            print("[FlowRate] Built-in demand suppressed (--scale 0). Only injected vehicles will run.")
         
         try:
             traci.start(sumo_cmd)
@@ -495,7 +518,8 @@ class SimulationController:
                 "status": "success", 
                 "message": "Simulation started", 
                 "step": self.current_step,
-                "auto_stepping": self.auto_stepping
+                "auto_stepping": self.auto_stepping,
+                "suppress_demand": suppress_demand,
             }
         except Exception as e:
             # traci.start() may have partially opened a connection/process before
@@ -774,6 +798,10 @@ class SimulationController:
                 # traci.close() blocks until SUMO fully exits — safe to do here in background
                 traci.close()
                 self.current_step = 0
+                # Clear dynamic flow state so old rates don't persist after restart
+                self.flow_rates.clear()
+                self._flow_last_injections.clear()
+                self._flow_vehicle_counter = 0
                 print("Simulation stopped (teardown complete)")
             except Exception as e:
                 print(f"Error during simulation teardown: {e}")

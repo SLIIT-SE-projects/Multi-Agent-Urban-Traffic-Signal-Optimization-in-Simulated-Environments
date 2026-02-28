@@ -1,10 +1,7 @@
 import { useState } from 'react'
 import {
   startSimulation,
-  stopSimulation,
   stepSimulation,
-  pauseSimulation,
-  resumeSimulation,
   startAutoStep,
   stopAutoStep,
   pauseAutoStep,

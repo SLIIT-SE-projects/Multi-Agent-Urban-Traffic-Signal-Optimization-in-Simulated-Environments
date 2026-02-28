@@ -15,7 +15,9 @@ import {
 
 interface LaneData {
   queue_length: number
+  vehicle_count: number
   occupancy: number
+  /** Raw SUMO value — equals the speed *limit* when no vehicles are present. */
   avg_speed: number
   co2: number
   waiting_time: number
@@ -50,8 +52,16 @@ function deriveMetrics(event: SimulationStepEvent): DataPoint {
 
   const totalQueue = laneValues.reduce((sum, l) => sum + (l.queue_length ?? 0), 0)
 
-  const speedSum = laneValues.reduce((sum, l) => sum + (l.avg_speed ?? 0), 0)
-  const avgSpeed = laneValues.length > 0 ? speedSum / laneValues.length : 0
+  // Only include lanes that actually have vehicles — SUMO returns the free-flow
+  // speed limit (not 0) for empty lanes, which would produce a misleadingly
+  // high average when no traffic is present.
+  // Use vehicle_count when available (requires backend restart); fall back to
+  // occupancy > 0 which was always present in the snapshot.
+  const occupiedLanes = laneValues.filter(
+    (l) => (l.vehicle_count ?? 0) > 0 || (l.occupancy ?? 0) > 0,
+  )
+  const speedSum = occupiedLanes.reduce((sum, l) => sum + l.avg_speed, 0)
+  const avgSpeed = occupiedLanes.length > 0 ? speedSum / occupiedLanes.length : 0
 
   return {
     step: event.step,

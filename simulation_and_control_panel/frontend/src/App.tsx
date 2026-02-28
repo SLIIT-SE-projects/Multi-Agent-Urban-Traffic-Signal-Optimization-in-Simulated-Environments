@@ -10,6 +10,9 @@ import { PerformanceDashboard } from './components/PerformanceDashboard'
 function App() {
   const [backendStatus, setBackendStatus] = useState<'checking' | 'connected' | 'error'>('checking')
   const [mode, setMode] = useState<'manual' | 'auto'>('manual')
+  // Shared demand-suppression flag — toggled in SimulationLifecycle,
+  // consumed by both SimulationLifecycle and AutoSteppingControls.
+  const [suppressDemand, setSuppressDemand] = useState(true)
   const [simulationStatus, setSimulationStatus] = useState({
     is_running: false,
     is_paused: false,
@@ -150,6 +153,8 @@ function App() {
               isRunning={simulationStatus.is_running}
               isPaused={simulationStatus.is_paused}
               isStopping={simulationStatus.stopping}
+              suppressDemand={suppressDemand}
+              onSuppressDemandChange={setSuppressDemand}
             />
             
             {mode === 'manual' && (
@@ -165,6 +170,7 @@ function App() {
                 onRefresh={fetchStatus}
                 isRunning={simulationStatus.auto_stepping}
                 isPaused={simulationStatus.is_paused}
+                suppressDemand={suppressDemand}
               />
             )}
 
