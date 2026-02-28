@@ -288,6 +288,66 @@ def get_topology():
 
 
 # ============================================================================
+# DYNAMIC FLOW RATE ENDPOINTS
+# ============================================================================
+
+@app.route('/api/simulation/routes', methods=['GET'])
+def get_routes():
+    """Return all route IDs currently loaded in the running simulation."""
+    result = sim_controller.get_routes()
+    return jsonify(result)
+
+
+@app.route('/api/simulation/flow-rate', methods=['POST'])
+def set_flow_rate():
+    """Adjust vehicle insertion rate for a single route at runtime.
+
+    Expected JSON body::
+
+        {"route_id": "route_0", "vehicles_per_hour": 300}
+    """
+    data = request.get_json(silent=True) or {}
+    route_id = data.get('route_id')
+    vehicles_per_hour = data.get('vehicles_per_hour')
+
+    if not route_id:
+        return jsonify({"status": "error", "message": "route_id is required"}), 400
+    if vehicles_per_hour is None:
+        return jsonify({"status": "error", "message": "vehicles_per_hour is required"}), 400
+
+    try:
+        vehicles_per_hour = float(vehicles_per_hour)
+    except (TypeError, ValueError):
+        return jsonify({"status": "error", "message": "vehicles_per_hour must be a number"}), 400
+
+    result = sim_controller.set_flow_rate(route_id, vehicles_per_hour)
+    return jsonify(result)
+
+
+@app.route('/api/simulation/flow-rate/global', methods=['POST'])
+def set_global_flow_rate():
+    """Apply a single vehicle insertion rate to every route in the simulation.
+
+    Expected JSON body::
+
+        {"vehicles_per_hour": 300}
+    """
+    data = request.get_json(silent=True) or {}
+    vehicles_per_hour = data.get('vehicles_per_hour')
+
+    if vehicles_per_hour is None:
+        return jsonify({"status": "error", "message": "vehicles_per_hour is required"}), 400
+
+    try:
+        vehicles_per_hour = float(vehicles_per_hour)
+    except (TypeError, ValueError):
+        return jsonify({"status": "error", "message": "vehicles_per_hour must be a number"}), 400
+
+    result = sim_controller.set_global_flow_rate(vehicles_per_hour)
+    return jsonify(result)
+
+
+# ============================================================================
 # MPC BASELINE ENDPOINTS
 # ============================================================================
 

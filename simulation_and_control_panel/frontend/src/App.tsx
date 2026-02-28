@@ -4,6 +4,8 @@ import { SimulationLifecycle } from './components/SimulationLifecycle'
 import { ManualControls } from './components/ManualControls'
 import { AutoSteppingControls } from './components/AutoSteppingControls'
 import { ScenarioSelector } from './components/ScenarioSelector'
+import { FlowRateControl } from './components/FlowRateControl'
+import { PerformanceDashboard } from './components/PerformanceDashboard'
 
 function App() {
   const [backendStatus, setBackendStatus] = useState<'checking' | 'connected' | 'error'>('checking')
@@ -165,6 +167,10 @@ function App() {
                 isPaused={simulationStatus.is_paused}
               />
             )}
+
+            <FlowRateControl isRunning={simulationStatus.is_running} />
+
+            <PerformanceDashboard isRunning={simulationStatus.is_running} />
           </>
         )}
 

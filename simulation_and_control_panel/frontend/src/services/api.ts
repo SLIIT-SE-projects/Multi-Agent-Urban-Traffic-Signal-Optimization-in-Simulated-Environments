@@ -32,4 +32,17 @@ export const switchScenario = (scenarioName: string) =>
   apiClient.post('/simulation/switch-scenario', { scenario_name: scenarioName })
 export const reloadScenario = () => apiClient.post('/simulation/reload')
 
+// Flow Rate Control
+export const getRoutes = () => apiClient.get<{ status: string; routes: string[] }>('/simulation/routes')
+export const setFlowRate = (routeId: string, vehiclesPerHour: number) =>
+  apiClient.post('/simulation/flow-rate', {
+    route_id: routeId,
+    vehicles_per_hour: vehiclesPerHour,
+  })
+export const setGlobalFlowRate = (vehiclesPerHour: number) =>
+  apiClient.post<{ status: string; message: string; vehicles_per_hour: number; route_count: number }>(
+    '/simulation/flow-rate/global',
+    { vehicles_per_hour: vehiclesPerHour },
+  )
+
 export default apiClient
