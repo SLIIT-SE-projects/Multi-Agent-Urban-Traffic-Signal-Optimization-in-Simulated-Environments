@@ -21,8 +21,8 @@ socketio = SocketIO(app, cors_allowed_origins="*", async_mode='threading')
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 # CHANGE THIS to your actual config file!
 # CONFIG_FILE = os.path.join(BASE_DIR, "..", "scenarios", "mapishara.sumo.cfg")
-# CONFIG_FILE = os.path.join(BASE_DIR, "..", "scenarios", "grid3x3", "grid3x3.sumo.cfg")
-CONFIG_FILE = os.path.join(BASE_DIR, "..", "..", "services", "emergency_vehicle_preemption", "simulation", "config", "katunayake.sumocfg")
+CONFIG_FILE = os.path.join(BASE_DIR, "..", "scenarios", "grid3x3", "grid3x3.sumo.cfg")
+# CONFIG_FILE = os.path.join(BASE_DIR, "..", "..", "services", "emergency_vehicle_preemption", "simulation", "config", "katunayake.sumocfg")
 
 # Initialize controllers
 green_wave_controller = GreenWaveController(use_gui=config.USE_GUI)
@@ -76,7 +76,9 @@ def health_check():
 
 @app.route('/api/simulation/start', methods=['POST'])
 def start_simulation():
-    result = sim_controller.start()
+    data = request.get_json(silent=True) or {}
+    suppress_demand = bool(data.get('suppress_demand', False))
+    result = sim_controller.start(suppress_demand=suppress_demand)
     return jsonify(result)
 
 
@@ -284,6 +286,66 @@ def unload_optimizer():
 def get_topology():
     """Get the network topology (intersections, lanes, edges)"""
     result = sim_controller.get_network_topology()
+    return jsonify(result)
+
+
+# ============================================================================
+# DYNAMIC FLOW RATE ENDPOINTS
+# ============================================================================
+
+@app.route('/api/simulation/routes', methods=['GET'])
+def get_routes():
+    """Return all route IDs currently loaded in the running simulation."""
+    result = sim_controller.get_routes()
+    return jsonify(result)
+
+
+@app.route('/api/simulation/flow-rate', methods=['POST'])
+def set_flow_rate():
+    """Adjust vehicle insertion rate for a single route at runtime.
+
+    Expected JSON body::
+
+        {"route_id": "route_0", "vehicles_per_hour": 300}
+    """
+    data = request.get_json(silent=True) or {}
+    route_id = data.get('route_id')
+    vehicles_per_hour = data.get('vehicles_per_hour')
+
+    if not route_id:
+        return jsonify({"status": "error", "message": "route_id is required"}), 400
+    if vehicles_per_hour is None:
+        return jsonify({"status": "error", "message": "vehicles_per_hour is required"}), 400
+
+    try:
+        vehicles_per_hour = float(vehicles_per_hour)
+    except (TypeError, ValueError):
+        return jsonify({"status": "error", "message": "vehicles_per_hour must be a number"}), 400
+
+    result = sim_controller.set_flow_rate(route_id, vehicles_per_hour)
+    return jsonify(result)
+
+
+@app.route('/api/simulation/flow-rate/global', methods=['POST'])
+def set_global_flow_rate():
+    """Apply a single vehicle insertion rate to every route in the simulation.
+
+    Expected JSON body::
+
+        {"vehicles_per_hour": 300}
+    """
+    data = request.get_json(silent=True) or {}
+    vehicles_per_hour = data.get('vehicles_per_hour')
+
+    if vehicles_per_hour is None:
+        return jsonify({"status": "error", "message": "vehicles_per_hour is required"}), 400
+
+    try:
+        vehicles_per_hour = float(vehicles_per_hour)
+    except (TypeError, ValueError):
+        return jsonify({"status": "error", "message": "vehicles_per_hour must be a number"}), 400
+
+    result = sim_controller.set_global_flow_rate(vehicles_per_hour)
     return jsonify(result)
 
 
