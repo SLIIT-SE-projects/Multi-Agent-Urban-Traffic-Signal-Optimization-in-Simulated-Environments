@@ -18,7 +18,7 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 MODEL_PATH = os.path.join(BASE_DIR, "../models/saved/eta_predictor.h5")
 SCALER_PATH = os.path.join(BASE_DIR, "../data/scalers/eta_scaler.pkl")
 SAFETY_MODEL_PATH = os.path.join(BASE_DIR, "../models/saved/outcome_safety_classifier.pkl")
-SUMO_CONFIG = os.path.join(BASE_DIR, "../simulation/config/complex_evaluation.sumocfg")
+SUMO_CONFIG = os.path.join(BASE_DIR, "../simulation/config/colombo_mega_scenario.sumocfg")
 
 # Initialize FastAPI
 app = FastAPI()
