@@ -13,6 +13,12 @@ export function MPCDashboard() {
     const [isConnected, setIsConnected] = useState(false);
     const [isRunning, setIsRunning] = useState(false);
     const [mpcActive, setMpcActive] = useState(false);
+    const [toast, setToast] = useState<{ title: string; message: string; type: 'success' | 'info' | 'error' } | null>(null);
+
+    const showToast = (title: string, message: string, type: 'success' | 'info' | 'error' = 'info') => {
+        setToast({ title, message, type });
+        setTimeout(() => setToast(null), 4000);
+    };
 
     // --- Baseline Logic ---
     const [baselineData, setBaselineData] = useState<any[] | null>(null);
@@ -158,17 +164,27 @@ export function MPCDashboard() {
     };
 
     const loadMPC = async () => {
-        await fetch(`${BASE_URL}/optimizer/load`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ type: 'mpc' })
-        });
-        setMpcActive(true);
+        try {
+            await fetch(`${BASE_URL}/optimizer/load`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ type: 'mpc' })
+            });
+            setMpcActive(true);
+            showToast('MPC Activated', 'The Model Predictive Controller has taken over the traffic signals. Watching for live data...', 'success');
+        } catch (error) {
+            showToast('Activation Failed', 'Could not activate MPC. Check backend logs.', 'error');
+        }
     };
 
     const loadBaseline = async () => {
-        await fetch(`${BASE_URL}/optimizer/unload`, { method: 'POST' });
-        setMpcActive(false);
+        try {
+            await fetch(`${BASE_URL}/optimizer/unload`, { method: 'POST' });
+            setMpcActive(false);
+            showToast('Normal Signals', 'Reverted to default static traffic signals (Baseline).', 'info');
+        } catch (error) {
+            showToast('Action Failed', 'Could not unload MPC.', 'error');
+        }
     };
 
     return (
@@ -246,6 +262,28 @@ export function MPCDashboard() {
                 {activeSubTab === 'monitor' && <MpcMonitorTab status={status} dataHistory={dataHistory} />}
                 {activeSubTab === 'config' && <MpcConfigTab />}
             </div>
+
+            {/* User Friendly Toast Notification */}
+            {toast && (
+                <div className="fixed bottom-6 right-6 z-50 animate-in slide-in-from-bottom-5 fade-in duration-300">
+                    <div className={`flex items-start gap-4 px-6 py-4 rounded-xl shadow-2xl border ${toast.type === 'success' ? 'bg-emerald-950/90 border-emerald-500/50 text-emerald-100' :
+                            toast.type === 'error' ? 'bg-rose-950/90 border-rose-500/50 text-rose-100' :
+                                'bg-slate-900/90 border-slate-700 text-slate-200'
+                        } backdrop-blur-md max-w-sm`}>
+                        <div className="mt-0.5">
+                            {toast.type === 'success' ? <Activity className="text-emerald-400" size={20} /> :
+                                toast.type === 'error' ? <Square className="text-rose-400" size={20} /> :
+                                    <Settings className="text-slate-400" size={20} />}
+                        </div>
+                        <div>
+                            <h4 className={`font-semibold text-sm mb-1 ${toast.type === 'success' ? 'text-emerald-300' :
+                                    toast.type === 'error' ? 'text-rose-300' : 'text-slate-300'
+                                }`}>{toast.title}</h4>
+                            <p className="text-xs opacity-80 leading-relaxed">{toast.message}</p>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }

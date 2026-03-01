@@ -27,8 +27,9 @@ def generate_data(steps=3000):
     
     # 1. Setup Config
     base_dir = os.path.dirname(os.path.abspath(__file__))
-    scenario_path = os.path.join(base_dir, "../emergency_vehicle_preemption/simulation/config/katunayake.sumocfg")
-    
+    # scenario_path = os.path.join(base_dir, "../emergency_vehicle_preemption/simulation/config/katunayake.sumocfg")
+    scenario_path = os.path.join(base_dir, "../../simulation_and_control_panel/scenarios/grid3x3/grid3x3.sumo.cfg")
+
     sumo_cfg = SumoConfig(
         sumo_binary="sumo", # Headless for speed
         config_file=scenario_path,
