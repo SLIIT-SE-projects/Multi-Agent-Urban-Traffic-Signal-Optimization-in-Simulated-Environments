@@ -20,6 +20,9 @@ class GraphConfig:
     INTERSECTION_INPUT_DIM = NUM_SIGNAL_PHASES + 1  # Phases + Time feature
     LANE_INPUT_DIM = 3     # Queue + wait + Speed
 
+    # [NEW] Add Edge Input Dimension for physical road properties
+    EDGE_INPUT_DIM = 2     # Length, Speed Limit
+
 class ModelConfig:
     NUM_HEADS = 2      # For GATConv
     DROPOUT_RATE = 0.3 # Uncertainty Mechanism
@@ -36,8 +39,8 @@ class TrainConfig:
     TRAIN_SPLIT = 0.8
 
     # MARL TRAINING SETTINGS
-    MARL_EPISODES = 100
-    MARL_STEPS_PER_EPISODE = 500
+    MARL_EPISODES = 50
+    MARL_STEPS_PER_EPISODE = 1000
     MARL_LEARNING_RATE = 5e-5 
     ACTION_INTERVAL = 15    
     MARL_GAMMA = 0.99
@@ -61,7 +64,7 @@ class TrainConfig:
 
     # INFERENCE & SAFETY
     UNCERTAINTY_THRESHOLD = 0.05
-    MC_SAMPLES = 30
+    MC_SAMPLES = 20
 
 class FileConfig:
     EXPERIMENTS_FOLDER = os.path.join(PROJECT_ROOT, "experiments")

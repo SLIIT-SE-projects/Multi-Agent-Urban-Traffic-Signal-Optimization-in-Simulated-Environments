@@ -100,7 +100,7 @@ def ppo_update(model, optimizer, buffer, advantages, returns):
         
         for i, data in enumerate(buffer.states):
             h_in = old_hidden_states[i]
-            logits, val, _ = model(data.x_dict, data.edge_index_dict, h_in)
+            logits, val, _ = model(data.x_dict, data.edge_index_dict, h_in, data.edge_attr_dict)
             probs = F.softmax(logits, dim=1)
             dist = torch.distributions.Categorical(probs)
             
@@ -216,7 +216,7 @@ def train_marl():
                 
                 with torch.no_grad():
                     h_in = hidden_state.clone() if hidden_state is not None else None
-                    logits, value, hidden_state = model(data.x_dict, data.edge_index_dict, hidden_state)
+                    logits, value, hidden_state = model(data.x_dict, data.edge_index_dict, hidden_state, data.edge_attr_dict)
                     action, log_prob = select_action(logits)
                 
                 idx_to_id = {v: k for k, v in graph_builder.tls_map.items()}
@@ -326,7 +326,7 @@ def evaluate_model(model, graph_builder, episode_num):
                 data = graph_builder.create_hetero_data(snapshot)
                 
                 with torch.no_grad():
-                    action_logits, _, hidden_state = model(data.x_dict, data.edge_index_dict, hidden_state)
+                    action_logits, _, hidden_state = model(data.x_dict, data.edge_index_dict, hidden_state, data.edge_attr_dict)
                     actions_indices = select_action(action_logits)[0] 
                     
                     idx_to_id = {v: k for k, v in graph_builder.tls_map.items()}

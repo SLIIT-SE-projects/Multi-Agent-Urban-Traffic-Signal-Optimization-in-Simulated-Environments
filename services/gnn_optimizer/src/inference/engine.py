@@ -85,7 +85,8 @@ class RealTimeInferenceEngine:
                         batched_logits, _, _ = self.model(
                             batched_data.x_dict, 
                             batched_data.edge_index_dict, 
-                            batched_hidden 
+                            batched_hidden,
+                            batched_data.edge_attr_dict
                         )
                     
                     # 3. Calculate Mean and Variance Vectorized
@@ -102,7 +103,8 @@ class RealTimeInferenceEngine:
                     _, _, self.hidden_state = self.model(
                         data.x_dict, 
                         data.edge_index_dict, 
-                        self.hidden_state
+                        self.hidden_state,
+                        data.edge_attr_dict
                     )
 
                     # 6. Take Action based on mean_logits

@@ -56,6 +56,8 @@ class TrafficGraphBuilder:
     def _build_static_topology(self):
         
         src_part_of, dst_part_of = [], []
+        edge_attr_part_of = [] # [NEW] Store physical features
+        
         src_adj, dst_adj = [], []
         src_feed, dst_feed = [], []
 
@@ -75,6 +77,12 @@ class TrafficGraphBuilder:
                     
                     src_part_of.append(l_idx)
                     dst_part_of.append(i_idx)
+                    
+                    # [NEW] Extract Physical Edge Features & Normalize
+                    # Max expected road length ~1000m, max speed ~33m/s (120km/h)
+                    norm_length = min(lane.getLength() / 1000.0, 1.0)
+                    norm_speed_limit = min(lane.getSpeed() / 33.33, 1.0)
+                    edge_attr_part_of.append([norm_length, norm_speed_limit])
 
         # B. Intersection -> Intersection Topology ('adjacent_to')
         for tls in self.tls_objects:
@@ -115,6 +123,7 @@ class TrafficGraphBuilder:
 
         return {
             'part_of': torch.tensor([src_part_of, dst_part_of], dtype=torch.long),
+            'part_of_attr': torch.tensor(edge_attr_part_of, dtype=torch.float), # [NEW] Added tensor
             'adjacent': torch.tensor([src_adj, dst_adj], dtype=torch.long),
             'feeds': torch.tensor([src_feed, dst_feed], dtype=torch.long)
         }
@@ -193,6 +202,8 @@ class TrafficGraphBuilder:
         # --- 2. Edges (Static) ---
         if self.static_edges['part_of'].numel() > 0:
             data['lane', 'part_of', 'intersection'].edge_index = self.static_edges['part_of']
+            # [NEW] Attach the physical attributes to the graph
+            data['lane', 'part_of', 'intersection'].edge_attr = self.static_edges['part_of_attr']
         
         if self.static_edges['adjacent'].numel() > 0:
             data['intersection', 'adjacent_to', 'intersection'].edge_index = self.static_edges['adjacent']

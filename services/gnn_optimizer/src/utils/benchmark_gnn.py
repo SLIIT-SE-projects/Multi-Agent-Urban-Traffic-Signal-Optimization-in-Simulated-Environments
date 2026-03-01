@@ -65,6 +65,14 @@ def run_simulation(mode="baseline"):
     print(f"\n[{label}] Starting simulation (Seed {SEED})...")
     
     # 1. Init SUMO
+    # Force the hard route for the benchmark to truly test the SOTA architecture
+    hard_route = "simulation/routes_hard.xml"
+    active_route = "simulation/routes.rou.xml"
+    if os.path.exists(hard_route):
+        import shutil
+        shutil.copy(hard_route, active_route)
+        print(f"   Loaded Hard Traffic Scenario for Benchmark.")
+
     manager = SumoManager(SimConfig.SUMO_CFG, use_gui=False)
     graph_builder = TrafficGraphBuilder(SimConfig.NET_FILE)
     manager.start()
@@ -100,6 +108,10 @@ def run_simulation(mode="baseline"):
     
     idx_to_id = {v: k for k, v in graph_builder.tls_map.items()}
     ACTION_INTERVAL = 15
+    MIN_GREEN_TIME = 20
+
+    last_switch_step = {}
+    current_phases = {}
 
     for t in range(STEPS):
         # AI Control Logic (Only for GNN mode)
@@ -108,7 +120,9 @@ def run_simulation(mode="baseline"):
             data = graph_builder.create_hetero_data(snapshot)
             
             with torch.no_grad():
-                out = model(data.x_dict, data.edge_index_dict, hidden_state)
+                # [FIX]: Added data.edge_attr_dict to utilize the new physical road features
+                out = model(data.x_dict, data.edge_index_dict, hidden_state, data.edge_attr_dict)
+                
                 if isinstance(out, tuple):
                     logits = out[0]
                     hidden_state = out[-1]
@@ -121,8 +135,23 @@ def run_simulation(mode="baseline"):
                 for idx, val in enumerate(actions):
                     if idx in idx_to_id:
                         tls_id = idx_to_id[idx]
-                        phase = 2 if val == 1 else 0 
-                        actions_dict[tls_id] = phase
+                        
+                        # [FIX]: Apply MIN_GREEN_TIME logic exactly like training
+                        if tls_id not in last_switch_step:
+                            last_switch_step[tls_id] = -999
+                            current_phases[tls_id] = 0
+                            
+                        target_phase = 2 if val == 1 else 0 
+                        
+                        if (t - last_switch_step[tls_id]) < MIN_GREEN_TIME:
+                            final_phase = current_phases[tls_id]
+                        else:
+                            final_phase = target_phase
+                            if final_phase != current_phases[tls_id]:
+                                last_switch_step[tls_id] = t
+                                current_phases[tls_id] = final_phase
+                                
+                        actions_dict[tls_id] = final_phase
                 
                 manager.apply_actions(actions_dict)
         
@@ -194,7 +223,7 @@ def save_all_plots(base_data, gnn_data):
                       "Total Waiting Time", "Accumulated Seconds", 
                       "benchmark_wait.png", "#2980b9", higher_is_better=False)
 
-    # NEW: Average Speed Plot
+    # Average Speed Plot
     plot_single_metric(base_s, gnn_s, 
                       "Average Travel Speed (Proxy for Travel Time)", "Speed (m/s)", 
                       "benchmark_speed.png", "#e67e22", higher_is_better=True) # Orange
@@ -296,7 +325,7 @@ def main():
 
     print("\n" + "-"*40)
     print("RESULTS SUMMARY")
-    print("-"*40)
+    print("-" * 65)
     print(f"{'Metric':<25} | {'Baseline':<10} | {'GNN Model':<10} | {'Improvement':<10}")
     print("-" * 65)
     print(f"{'Avg Weighted Cost':<25} | {avg_base_cost:<10.2f} | {avg_gnn_cost:<10.2f} | {imp_cost:+.2f}%")
