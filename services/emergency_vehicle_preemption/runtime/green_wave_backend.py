@@ -41,6 +41,12 @@ class GreenWaveController:
             self.model = tf.keras.models.load_model(MODEL_PATH)
             with open(SCALER_PATH, "rb") as f:
                 self.scaler = pickle.load(f)
+            
+            # Load the new Target (ETA) Scaler
+            TARGET_SCALER_PATH = os.path.join(BASE_DIR, "../data/scalers/eta_target_scaler.pkl")
+            with open(TARGET_SCALER_PATH, "rb") as f:
+                self.target_scaler = pickle.load(f)
+
             with open(SAFETY_MODEL_PATH, "rb") as f:
                 self.safety_model = pickle.load(f)
             print("SUCCESS: All Models loaded.")
@@ -337,7 +343,8 @@ class GreenWaveController:
             step_df = pd.DataFrame([raw_sequence[i]], columns=feature_cols)
             scaled[i] = self.scaler.transform(step_df)[0]
         input_data = scaled.reshape(1, self.sequence_length, 7)
-        return self.model.predict(input_data, verbose=0)[0][0]
+        normalized_eta = self.model.predict(input_data, verbose=0)
+        return self.target_scaler.inverse_transform(normalized_eta)[0][0]
 
     def _get_downstream_lane(self, ev_id):
         try:

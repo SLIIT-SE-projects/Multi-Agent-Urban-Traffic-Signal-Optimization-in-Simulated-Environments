@@ -130,6 +130,13 @@ def main():
     with open(os.path.join(SCALER_DIR, "eta_scaler.pkl"), "wb") as f:
         pickle.dump(scaler, f)
 
+    # 3.5 Normalize Target (ETA)
+    target_scaler = MinMaxScaler(feature_range=(0, 1))
+    df[[target_col]] = target_scaler.fit_transform(df[[target_col]])
+    
+    with open(os.path.join(SCALER_DIR, "eta_target_scaler.pkl"), "wb") as f:
+        pickle.dump(target_scaler, f)
+
     # 4. Sequences
     print("Creating LSTM sequences...")
     X, y = create_sequences(df, feature_cols, target_col, SEQUENCE_LENGTH)
