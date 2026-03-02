@@ -7,7 +7,7 @@ from sklearn.model_selection import train_test_split
 from sklearn.metrics import confusion_matrix, classification_report
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-DATA_PATH = os.path.join(BASE_DIR, "data/raw/outcome_based_safety_data.csv")
+DATA_PATH = os.path.join(BASE_DIR, "data/raw/massive_safety_data.csv")
 MODEL_PATH = os.path.join(BASE_DIR, "models/saved/outcome_safety_classifier.pkl")
 GRAPHS_DIR = os.path.join(BASE_DIR, "data/evaluation_results/graphs")
 os.makedirs(GRAPHS_DIR, exist_ok=True)
