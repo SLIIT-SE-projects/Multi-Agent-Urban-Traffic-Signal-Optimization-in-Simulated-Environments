@@ -6,8 +6,8 @@ import numpy as np
 import traci
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-CONFIGS_DIR = os.path.join(BASE_DIR, "../simulation/config/bulk_scenarios")
-DATA_DIR = os.path.join(BASE_DIR, "../data/raw")
+CONFIGS_DIR = os.path.abspath(os.path.join(BASE_DIR, "../simulation/config/bulk_scenarios"))
+DATA_DIR = os.path.abspath(os.path.join(BASE_DIR, "../data/raw"))
 os.makedirs(DATA_DIR, exist_ok=True)
 
 class UnifiedDataCollector:
