@@ -1,0 +1,10 @@
+<configuration>
+    <input>
+        <net-file value="..\..\networks\complex_evaluation.net.xml"/>
+        <route-files value="..\..\routes\bulk_scenarios\scenario_1.rou.xml"/>
+    </input>
+    <time>
+        <begin value="0"/>
+        <end value="4000"/>
+    </time>
+</configuration>

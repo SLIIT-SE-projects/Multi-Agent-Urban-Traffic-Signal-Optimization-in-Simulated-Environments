@@ -7,7 +7,7 @@ from sklearn.metrics import classification_report, confusion_matrix
 
 # --- CONFIGURATION ---
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-DATA_PATH = os.path.join(BASE_DIR, "../data/raw/outcome_based_safety_data.csv")
+DATA_PATH = os.path.join(BASE_DIR, "../data/raw/massive_safety_data.csv")
 MODEL_DIR = os.path.join(BASE_DIR, "../models/saved")
 os.makedirs(MODEL_DIR, exist_ok=True)
 

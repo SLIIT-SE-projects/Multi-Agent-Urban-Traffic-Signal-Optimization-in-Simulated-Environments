@@ -11,9 +11,9 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 PROCESSED_DATA_DIR = os.path.join(BASE_DIR, "../data/processed/")
 MODEL_SAVE_DIR = os.path.join(BASE_DIR, "../models/saved/")
 
-# Hyperparameters
-EPOCHS = 100          # How many times to loop through the data
-BATCH_SIZE = 32       # Number of samples per update (Small because our current data is small)
+# Hyperparameters for Massive Dataset
+EPOCHS = 50          # Reduced epochs due to massive data volume, rely on early stopping
+BATCH_SIZE = 256     # Scaled up for large matrices
 VALIDATION_SPLIT = 0.2
 
 os.makedirs(MODEL_SAVE_DIR, exist_ok=True)

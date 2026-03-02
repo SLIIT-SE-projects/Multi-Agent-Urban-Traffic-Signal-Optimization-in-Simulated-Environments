@@ -21,7 +21,7 @@ os.makedirs(SCALER_DIR, exist_ok=True)
 
 def load_data():
     """Loads all CSV files."""
-    all_files = glob.glob(os.path.join(RAW_DATA_DIR, "eta_data_*.csv"))
+    all_files = glob.glob(os.path.join(RAW_DATA_DIR, "massive_eta_data*.csv"))
     if not all_files:
         print(f"ERROR: No data found in {RAW_DATA_DIR}")
         return None
