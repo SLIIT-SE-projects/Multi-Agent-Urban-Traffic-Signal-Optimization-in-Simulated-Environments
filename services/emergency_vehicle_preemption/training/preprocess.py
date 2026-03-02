@@ -41,19 +41,43 @@ def load_data():
 
 def calculate_actual_eta(df):
     """
-    Calculates Target ETA.
-    Logic: Group by EV ID. Find arrival step (max step) for THAT vehicle.
+    Calculates Target ETA to the NEXT intersection, NOT the end of the entire trip.
+    Logic: Track the 'distance_to_signal'. When distance spikes upwards, 
+    it means the EV crossed the intersection. Calculate the time remaining 
+    until that specific spike.
     """
     processed_evs = []
     
     for ev_id, group in df.groupby('ev_id'):
-        group = group.copy()
-        group = group.sort_values('step')
+        group = group.copy().sort_values('step').reset_index(drop=True)
         
-        # Assume last seen step is arrival
-        arrival_step = group['step'].max()
-        group['actual_eta'] = arrival_step - group['step']
+        # Identify intersection crossings (distance suddenly spikes up)
+        # Difference > 10m is a solid threshold for jumping back to the start of a new lane
+        crossings = group.index[group['distance_to_signal'].diff() > 10].tolist()
         
+        # Add the final step as a "crossing" so the final segment has a target
+        crossings.append(len(group) - 1)
+        
+        actual_etas = np.zeros(len(group))
+        
+        start_idx = 0
+        for crossing_idx in crossings:
+            # If it's a real crossing (spiked distance), actual arrival was the step BEFORE the spike
+            if crossing_idx == len(group) - 1:
+                arrival_idx = crossing_idx
+            else:
+                arrival_idx = crossing_idx - 1
+                
+            arrival_step = group.loc[arrival_idx, 'step']
+            segment_steps = group.loc[start_idx:arrival_idx, 'step']
+            
+            # Sub-segment ETA
+            actual_etas[start_idx:arrival_idx+1] = arrival_step - segment_steps
+            
+            # Note: the actual 'spike' step (crossing_idx) becomes the start_idx for the NEXT segment
+            start_idx = crossing_idx
+
+        group['actual_eta'] = actual_etas
         processed_evs.append(group)
         
     return pd.concat(processed_evs, ignore_index=True)
