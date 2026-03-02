@@ -141,7 +141,7 @@ def select_action(logits):
     return action, m.log_prob(action)
 
 def train_marl():
-    print(" Starting PPO MARL Fine-Tuning (Localized Rewards)...")
+    print("🚦 Starting SOTA PPO MARL Fine-Tuning (With LR Decay & Best Checkpointing)...")
     
     manager = SumoManager(SUMO_CONFIG, use_gui=False)
     graph_builder = TrafficGraphBuilder(SUMO_NET)
@@ -160,33 +160,37 @@ def train_marl():
         metadata=data.metadata()
     )
     
-    if os.path.exists(FINAL_MODEL_PATH):
-        print(f" Resuming from {FINAL_MODEL_PATH}...")
-        try: model.load_state_dict(torch.load(FINAL_MODEL_PATH))
-        except: pass
-    else:
+    BEST_MODEL_PATH = FINAL_MODEL_PATH.replace(".pth", "_best.pth")
+    
+    if os.path.exists(PRETRAINED_PATH):
         print(f" Loading SSL weights from {PRETRAINED_PATH}...")
-        try: model.load_state_dict(torch.load(PRETRAINED_PATH, weights_only=True), strict=False)
-        except: print(" Training from SCRATCH.")
+        model.load_state_dict(torch.load(PRETRAINED_PATH, weights_only=True), strict=False)
 
+    # -------------------------------------------------------------
+    # [UPDATE 1]: Learning Rate Scheduler added here!
+    # -------------------------------------------------------------
     optimizer = optim.Adam(model.parameters(), lr=LEARNING_RATE)
+    scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=30, gamma=0.5) 
+    
     buffer = RolloutBuffer()
     
     history_rewards = []
     history_queues = []
     history_losses = []
     
-    ACTION_INTERVAL = 15
-    MIN_GREEN_TIME = 20 # Minimum seconds to hold a green light
+    ACTION_INTERVAL = 20
+    best_eval_reward = -float('inf') 
     
     for episode in range(1, EPISODES + 1):
 
-         # Switch Logic
-        if episode <= 10: source = ROUTE_EASY
-        elif episode <= 30: source = ROUTE_MEDIUM
-        else: source = ROUTE_HARD
+        # Curriculum Randomization
+        if episode <= 10: 
+            source = ROUTE_EASY
+        elif episode <= 25: 
+            source = ROUTE_MEDIUM
+        else: 
+            source = random.choice([ROUTE_MEDIUM, ROUTE_HARD, ROUTE_HARD])
 
-        # Copy file
         import shutil
         shutil.copy(source, ACTIVE_ROUTE)
 
@@ -197,19 +201,14 @@ def train_marl():
         ep_queue_sum = 0 
         ep_loss = 0      
         
-        # [FIX]: Initialize as an array of zeros per intersection
         interval_reward = np.zeros(graph_builder.num_intersections)
         step_counter = 0
         
-        # Track last switch time for each intersection to enforce Min Green
-        last_switch_step = {} 
-        current_phases = {} # Track what the simulation actually has
-        
-        print(f"\n Episode {episode}/{EPISODES}")
+        current_lr = scheduler.get_last_lr()[0]
+        print(f"\n🔄 Episode {episode}/{EPISODES} | Route: {os.path.basename(source)} | LR: {current_lr:.6f}")
         
         for t in tqdm(range(STEPS_PER_EPISODE)):
             
-            # Action Step
             if t % ACTION_INTERVAL == 0:
                 snap = manager.get_snapshot()
                 data = graph_builder.create_hetero_data(snap)
@@ -226,35 +225,12 @@ def train_marl():
                     if idx in idx_to_id:
                         model_action = val.item()
                         tls_id = idx_to_id[idx]
-                        
-                        # Initialize tracking if new
-                        if tls_id not in last_switch_step:
-                            last_switch_step[tls_id] = -999
-                            current_phases[tls_id] = 0
-                        
-                        # Map Model Action -> SUMO Phase
-                        target_phase = 0
-                        if model_action == 0: target_phase = 0
-                        elif model_action == 1: target_phase = 2 
-                        else: target_phase = 0
-                        
-                        # STABILITY FIX: MIN GREEN TIME
-                        if (t - last_switch_step[tls_id]) < MIN_GREEN_TIME:
-                            final_phase = current_phases[tls_id]
-                        else:
-                            final_phase = target_phase
-                            
-                            # If we actually changed, update timer
-                            if final_phase != current_phases[tls_id]:
-                                last_switch_step[tls_id] = t
-                                current_phases[tls_id] = final_phase
-                        
-                        actions_dict[tls_id] = final_phase
+                        target_phase = 2 if model_action == 1 else 0
+                        actions_dict[tls_id] = target_phase
 
                 manager.apply_actions(actions_dict)
                 
                 if step_counter > 0:
-                    # [FIX]: Use .copy() so the list stores distinct arrays over time
                     buffer.rewards.append(interval_reward.copy()) 
                     buffer.dones.append(0) 
                 
@@ -264,24 +240,19 @@ def train_marl():
                 buffer.values.append(value.detach().cpu().numpy().flatten())
                 buffer.hidden_states.append(h_in)
                 
-                # [FIX]: Reset array
                 interval_reward = np.zeros(graph_builder.num_intersections)
                 step_counter += 1
 
             manager.step()
             
-            # Data Collection
             if t > 0:
                 snap = manager.get_snapshot()
-                # [FIX]: Pass graph_builder to localized function
-                r_array = calculate_reward(snap, graph_builder)
+                r_array = calculate_reward(snap, graph_builder) # Ensure calculate_reward is using Max Pressure!
                 interval_reward += r_array
-                # [FIX]: Sum the array to track total global reward for logging only
                 ep_reward += np.sum(r_array)
                 ep_queue_sum += sum([l['queue_length'] for l in snap['lanes'].values()])
         
         if len(buffer.states) > len(buffer.rewards):
-            # [FIX]
             buffer.rewards.append(interval_reward.copy())
             buffer.dones.append(1) 
             
@@ -296,6 +267,11 @@ def train_marl():
             print(f" Update Complete. Loss: {ep_loss:.4f} | Ep Reward: {ep_reward:.2f}")
             buffer.reset()
         
+        # -------------------------------------------------------------
+        # [UPDATE 2]: Step the Learning Rate Scheduler
+        # -------------------------------------------------------------
+        scheduler.step()
+
         avg_queue = ep_queue_sum / STEPS_PER_EPISODE
         history_rewards.append(ep_reward)
         history_queues.append(avg_queue)
@@ -305,10 +281,25 @@ def train_marl():
         evaluator.plot_marl_performance(history_rewards, history_queues, history_losses, save_dir=PLOT_SAVE_DIR)
 
         if episode % TrainConfig.MARL_TESTING_EPISODES == 0:
-            evaluate_model(model, graph_builder, episode)
+            current_eval_reward = evaluate_model(model, graph_builder, episode)
+            
+            if current_eval_reward > best_eval_reward:
+                print(f"🌟 NEW HIGH SCORE! ({current_eval_reward:.2f} > {best_eval_reward:.2f}). Saving Best Model.")
+                best_eval_reward = current_eval_reward
+                torch.save(model.state_dict(), BEST_MODEL_PATH)
+            else:
+                print(f"⚠️ Policy degraded/stagnated. Current: {current_eval_reward:.2f} | Best: {best_eval_reward:.2f}")
 
+# -------------------------------------------------------------
+# [UPDATE 3]: The Flawless Evaluation Function
+# -------------------------------------------------------------
 def evaluate_model(model, graph_builder, episode_num):
-    print(f"\n Starting Evaluation (Episode {episode_num})...")
+    print(f"\n 📊 Starting Strict Evaluation (Episode {episode_num})...")
+    
+    # 1. ALWAYS force the Hard route for evaluation so scores are comparable
+    import shutil
+    shutil.copy(ROUTE_HARD, ACTIVE_ROUTE)
+    
     eval_manager = SumoManager(SUMO_CONFIG, use_gui=False) 
     eval_manager.start()
     
@@ -317,7 +308,9 @@ def evaluate_model(model, graph_builder, episode_num):
     steps = 0
     model.eval()
     hidden_state = None
-    ACTION_INTERVAL = 15 
+    
+    # 2. MUST match the training interval perfectly
+    ACTION_INTERVAL = 20 
     
     try:
         for t in range(STEPS_PER_EPISODE):
@@ -336,10 +329,7 @@ def evaluate_model(model, graph_builder, episode_num):
                         if idx in idx_to_id:
                             model_action = val.item()
                             tls_id = idx_to_id[idx]
-                            sumo_phase = 0
-                            if model_action == 0: sumo_phase = 0
-                            elif model_action == 1: sumo_phase = 2 
-                            else: sumo_phase = 0
+                            sumo_phase = 2 if model_action == 1 else 0
                             actions_dict[tls_id] = sumo_phase
                     
                 eval_manager.apply_actions(actions_dict)
@@ -347,7 +337,6 @@ def evaluate_model(model, graph_builder, episode_num):
             eval_manager.step()
             next_snapshot = eval_manager.get_snapshot()
             
-            # [FIX]: Use array and sum
             reward_array = calculate_reward(next_snapshot, graph_builder)
             total_eval_reward += np.sum(reward_array)
             
