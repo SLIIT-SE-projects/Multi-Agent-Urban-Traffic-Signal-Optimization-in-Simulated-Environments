@@ -42,8 +42,11 @@ def generate_data(steps=3000):
     # Discovery
     client.step()
     detectors = client.get_detector_data()
-    # Remove e2_ prefix
+    # Remove e2_ prefix to get lane IDs
     lane_ids = sorted([d.replace("e2_", "") for d in detectors.keys()])
+    
+    # Normalisation constant — must match the runtime adapter constant (LANE_CAPACITY = 20)
+    LANE_CAPACITY = 20.0
     
     data_buffer = []
     
@@ -51,8 +54,8 @@ def generate_data(steps=3000):
         for _ in range(steps):
             client.step()
             raw_data = client.get_detector_data()
-            # Convert dict to vector
-            snapshot = [raw_data.get(f"e2_{lid}", 0.0) for lid in lane_ids]
+            # Normalise halting counts by lane capacity so inputs are in [0, ~1]
+            snapshot = [raw_data.get(f"e2_{lid}", 0.0) / LANE_CAPACITY for lid in lane_ids]
             data_buffer.append(snapshot)
     finally:
         client.close()
