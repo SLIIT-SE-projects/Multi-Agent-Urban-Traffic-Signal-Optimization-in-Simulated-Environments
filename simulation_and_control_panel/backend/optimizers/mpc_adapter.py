@@ -176,11 +176,20 @@ class MPCTrafficOptimizer:
         # But 'DemandPredictor' needs flow.
         # We'll try to extract what we can.
         
+        # --- FIXED: use the same metric the LSTM was trained on ---
+        # Training used: E2 detector halting vehicle counts.
+        # `traci.lane.getLastStepHaltingNumber(lane_id)` == the number of stopped
+        # vehicles on a lane at this step, which is what the E2 detectors measured.
+        # We normalise by an assumed lane capacity of 20 vehicles so inputs stay
+        # in a reasonable [0, ~1] range consistent with the training distribution.
+        LANE_CAPACITY = 20.0
         current_flows = {}
-        lanes_data = snapshot.get("lanes", {})
         for lid in self.all_lanes_ordered:
-            info = lanes_data.get(lid, {})
-            current_flows[lid] = info.get("throughput", 0.0) * 3600.0
+            try:
+                halting = traci.lane.getLastStepHaltingNumber(lid)
+                current_flows[lid] = halting / LANE_CAPACITY   # normalised queue occupancy
+            except Exception:
+                current_flows[lid] = 0.0   # lane may not exist in this simulation
             
         if self.predictor:
             self.predictor.update_history(current_flows)
