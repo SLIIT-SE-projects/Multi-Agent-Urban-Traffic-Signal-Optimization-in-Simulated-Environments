@@ -192,7 +192,7 @@ class GreenWaveController:
                     if i == 0: t_eta = data["smoothed_eta"]
                     else: t_eta = t_dist / planning_speed
 
-                    if t_eta < 30.0 or t_dist < 100.0:
+                    if t_eta < 30.0:
                         if t_id not in intersection_bids:
                             intersection_bids[t_id] = []
                         
@@ -324,25 +324,18 @@ class GreenWaveController:
             if leader: l_gap, l_speed = leader[1], traci.vehicle.getSpeed(leader[0])
             else: l_gap, l_speed = 200, 30
             
-            tls_val = 0.0
-            next_tls = traci.vehicle.getNextTLS(ev_id)
-            if next_tls:
-                s = next_tls[0][3]
-                if s in ['r', 'R', 'u']: tls_val = 1.0 
-                elif s in ['y', 'Y']: tls_val = 0.5    
-            
-            return [speed, accel, dist, queue, l_gap, l_speed, tls_val]
+            return [speed, accel, dist, queue, l_gap, l_speed]
         except: return None
 
     def _predict_eta(self, ev_id):
         raw_sequence = np.array(self.fleet[ev_id]["buffer"])
         feature_cols = ['speed', 'acceleration', 'distance_to_signal', 
-                        'queue_length', 'leader_gap', 'leader_speed', 'tls_state']
+                        'queue_length', 'leader_gap', 'leader_speed']
         scaled = np.zeros_like(raw_sequence)
         for i in range(len(raw_sequence)):
             step_df = pd.DataFrame([raw_sequence[i]], columns=feature_cols)
             scaled[i] = self.scaler.transform(step_df)[0]
-        input_data = scaled.reshape(1, self.sequence_length, 7)
+        input_data = scaled.reshape(1, self.sequence_length, 6)
         normalized_eta = self.model.predict(input_data, verbose=0)
         return self.target_scaler.inverse_transform(normalized_eta)[0][0]
 
