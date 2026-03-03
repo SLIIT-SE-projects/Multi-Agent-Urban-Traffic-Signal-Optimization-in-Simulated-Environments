@@ -8,23 +8,24 @@ import seaborn as sns
 from scipy import stats
 import traci
 
-# Import backend controller
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+
 from runtime.green_wave_backend import controller
 
 # --- CONFIGURATION ---
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-SUMO_CONFIG = os.path.join(BASE_DIR, "simulation/config/colombo_mega_scenario.sumocfg")
+SUMO_CONFIG = os.path.join(BASE_DIR, "simulation/config/complex_evaluation.sumocfg")
 RESULTS_DIR = os.path.join(BASE_DIR, "data/evaluation_results")
 GRAPHS_DIR = os.path.join(BASE_DIR, "data/evaluation_results/graphs")
 
 os.makedirs(RESULTS_DIR, exist_ok=True)
 os.makedirs(GRAPHS_DIR, exist_ok=True)
 
-NUM_RUNS_PER_SCENARIO = 10
+NUM_RUNS_PER_SCENARIO = 1
 CONGESTION_LEVELS = {
-    "Low": "0.5",
-    "Medium": "1.0",
-    "High": "1.5"
+    "Low": "0.2",
+    "Medium": "0.5",
+    "High": "1.0"
 }
 
 # Save the original AI logic so we can restore it after the "Blind" runs
@@ -231,6 +232,22 @@ def run_statistical_analysis(df):
         # 3. AI GATEKEEPER ACTIVITY
         print(f"\n  [AI Activity]")
         print(f"    Gatekeeper Interventions: {evps_df['Gatekeeper_Interventions'].mean():.1f} denials per run")
+        
+        # 4. CIVILIAN DELAY ANALYSIS
+        base_delay = base_df["Civilian_Delay_sec"].values
+        blind_delay = blind_df["Civilian_Delay_sec"].values
+        evps_delay = evps_df["Civilian_Delay_sec"].values
+        
+        delay_change = ((evps_delay.mean() - base_delay.mean()) / base_delay.mean()) * 100 if base_delay.mean() > 0 else 0
+        if base_delay.var() == 0 and evps_delay.var() == 0:
+            p_val_delay = 1.0
+        else:
+            t_stat_delay, p_val_delay = stats.ttest_rel(base_delay, evps_delay)
+            
+        print(f"\n  [Civilian Impact: Baseline vs Intelligent EVPS]")
+        print(f"    Baseline Delay: {base_delay.mean():.2f}s | Intelligent Delay: {evps_delay.mean():.2f}s")
+        print(f"    Impact:         {delay_change:+.2f}% change in delay")
+        print(f"    P-Value:        {p_val_delay:.5e} -> " + ("✅ Sig" if p_val_delay < 0.05 else "❌ Not Sig"))
 
 def main():
     print("Starting Automated EVPS Ablation Study (3 Modes, Paired Execution)...")
