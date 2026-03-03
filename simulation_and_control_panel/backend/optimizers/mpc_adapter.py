@@ -141,10 +141,16 @@ class MPCTrafficOptimizer:
             self.all_lanes_ordered = sorted(list(all_lanes_set))
             
             # 2. Path to Model
-            # Assuming standard location relative to mpc_service_path
-            # mpc_service_path is .../services/mpc_traffic_control/src
             data_dir = os.path.abspath(os.path.join(mpc_service_path, "../data"))
             model_path = os.path.join(data_dir, "model.pth")
+            lane_ids_path = os.path.join(data_dir, "lane_ids.json")
+            
+            import json
+            if os.path.exists(lane_ids_path):
+                with open(lane_ids_path, "r") as f:
+                    self.all_lanes_ordered = json.load(f)
+            else:
+                self.all_lanes_ordered = sorted(list(all_lanes_set))
             
             print(f"🔮 Initializing Demand Predictor for {len(self.all_lanes_ordered)} lanes...")
             print(f"   Model Path: {model_path}")
@@ -172,15 +178,9 @@ class MPCTrafficOptimizer:
         
         current_flows = {}
         lanes_data = snapshot.get("lanes", {})
-        for lid, info in lanes_data.items():
-            # info might have 'last_step_vehicle_number' or similar
-            # For now, let's use queue length as a proxy if flow missing? No, that's bad.
-            # Let's assume there's a flow field or we just pass 0.
-            # Ideally mpc_adapter SHOULD get reading from E2/E1.
-            # If snapshot is from SimulationController, it sends processed data.
-            # Let's assume induction_loop info.
-            current_flows[lid] = info.get("throughput", 0.0) * 3600.0 # Convert to veh/hour? Or just counts
-            # Predictor expects counts per step often.
+        for lid in self.all_lanes_ordered:
+            info = lanes_data.get(lid, {})
+            current_flows[lid] = info.get("throughput", 0.0) * 3600.0
             
         if self.predictor:
             self.predictor.update_history(current_flows)

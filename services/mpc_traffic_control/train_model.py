@@ -70,7 +70,9 @@ def create_sequences(data, seq_len, pred_len):
     return np.array(xs), np.array(ys)
 
 def train():
-    os.makedirs("data", exist_ok=True)
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    data_dir = os.path.join(base_dir, "data")
+    os.makedirs(data_dir, exist_ok=True)
     
     # 1. Generate Data
     raw_data, lane_ids = generate_data()
@@ -105,9 +107,15 @@ def train():
             logger.info(f"Epoch {epoch} Loss: {loss.item():.4f}")
 
     # 4. Save
-    model_path = "data/model.pth"
+    model_path = os.path.join(data_dir, "model.pth")
     torch.save(model.state_dict(), model_path)
-    logger.info(f"Model saved to {model_path}")
+    
+    import json
+    lane_ids_path = os.path.join(data_dir, "lane_ids.json")
+    with open(lane_ids_path, "w") as f:
+        json.dump(lane_ids, f)
+        
+    logger.info(f"Model saved to {model_path} and lane IDs saved to {lane_ids_path}")
 
 if __name__ == "__main__":
     train()
