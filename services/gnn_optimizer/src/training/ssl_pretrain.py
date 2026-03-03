@@ -59,7 +59,7 @@ def train_ssl():
     sample_graph = dataset[0]
     metadata = sample_graph.metadata()
     
-    gnn_model = RecurrentHGAT(HIDDEN_DIM, GraphConfig.NUM_SIGNAL_PHASES, ModelConfig.NUM_HEADS, metadata)
+    gnn_model = RecurrentHGAT(HIDDEN_DIM, GraphConfig.NUM_ACTIONS, ModelConfig.NUM_HEADS, metadata)
     predictor = StatePredictor(HIDDEN_DIM, GraphConfig.INTERSECTION_INPUT_DIM)
     evaluator = Evaluator()
     
@@ -85,7 +85,13 @@ def train_ssl():
             
             optimizer.zero_grad()
             
-            _, _, hidden_state = gnn_model(current_data.x_dict, current_data.edge_index_dict, hidden_state)
+            # [FIXED]: Added current_data.edge_attr_dict to the forward pass
+            _, _, hidden_state = gnn_model(
+                current_data.x_dict, 
+                current_data.edge_index_dict, 
+                hidden_state, 
+                current_data.edge_attr_dict
+            )
             
             predicted_next_state = predictor(hidden_state)
             target = next_data['intersection'].x
@@ -114,7 +120,13 @@ def train_ssl():
                 current_data = test_dataset[t]
                 next_data = test_dataset[t+1]
                 
-                _, _, hidden_state_test = gnn_model(current_data.x_dict, current_data.edge_index_dict, hidden_state_test)
+                # [FIXED]: Added current_data.edge_attr_dict to the evaluation pass
+                _, _, hidden_state_test = gnn_model(
+                    current_data.x_dict, 
+                    current_data.edge_index_dict, 
+                    hidden_state_test, 
+                    current_data.edge_attr_dict
+                )
                 
                 predicted = predictor(hidden_state_test)
                 target = next_data['intersection'].x
@@ -147,10 +159,6 @@ def train_ssl():
         else:
             print(f"   (Loss did not improve from {best_val_loss:.4f})")
 
-    # 4. Finalize
-    # print(" Saving Pre-trained Weights...")
-    # torch.save(gnn_model.state_dict(), MODEL_SAVE_PATH)
-    
     # Generate Plots
     print(" Generating Evaluation Plots...")
     evaluator.plot_learning_curves(save_path=f"{PLOT_SAVE_DIR}/loss_curve.png")

@@ -3,8 +3,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch_geometric.nn import HeteroConv, GATConv, Linear
 
-# --- IMPORT THE NEW MODULES ---
-from src.config import ModelConfig, GraphConfig # [NEW] Imported GraphConfig for edge dimension
+from src.config import ModelConfig, GraphConfig 
 from src.models.policy_head import TrafficPolicyHead
 from src.models.uncertainty import BayesianDropout
 
@@ -19,15 +18,24 @@ class RecurrentHGAT(nn.Module):
         self.encoder_dict['intersection'] = Linear(-1, hidden_channels)
         self.encoder_dict['lane'] = Linear(-1, hidden_channels)
 
-        # 2. Spatial GNN Layers
-        # [NEW] Added edge_dim to the GATConv so it learns from road capacity
-        self.conv1 = HeteroConv({
+        # ------------------------------------------------------------------
+        # FIX 1: TWO-LAYER GNN (Prevents DDP Crash & Adds Spillback Awareness)
+        # ------------------------------------------------------------------
+        
+        # LAYER 1: Local Entity Context (Lanes -> Lanes, Intersections -> Intersections)
+        # concat=False keeps dimension at hidden_channels for the residual connection
+        self.conv1_context = HeteroConv({
+            ('lane', 'feeds_into', 'lane'): GATConv((-1, -1), hidden_channels, heads=num_heads, concat=False, add_self_loops=False),
+            ('intersection', 'adjacent_to', 'intersection'): GATConv((-1, -1), hidden_channels, heads=num_heads, concat=False, add_self_loops=False)
+        }, aggr='sum')
+
+        # LAYER 2: Target Aggregation (Updated Lanes -> Intersections)
+        # concat=True outputs (hidden_channels * num_heads) to feed the GRU perfectly
+        self.conv2_target = HeteroConv({
             ('lane', 'part_of', 'intersection'): GATConv(
-                (-1, -1), hidden_channels, heads=num_heads, add_self_loops=False,
+                (-1, -1), hidden_channels, heads=num_heads, concat=True, add_self_loops=False,
                 edge_dim=GraphConfig.EDGE_INPUT_DIM # <--- Reads edge features
-            ),
-            ('intersection', 'adjacent_to', 'intersection'): GATConv((-1, -1), hidden_channels, heads=num_heads, add_self_loops=False),
-            ('lane', 'feeds_into', 'lane'): GATConv((-1, -1), hidden_channels, heads=num_heads, add_self_loops=False)
+            )
         }, aggr='sum')
 
         # 3. Temporal Recurrent Layer.
@@ -40,25 +48,44 @@ class RecurrentHGAT(nn.Module):
         # 5. Actor-Critic Head
         self.policy_head = TrafficPolicyHead(hidden_channels, out_channels)
 
-    # [NEW] Added edge_attr_dict parameter to accept the physical features
     def forward(self, x_dict, edge_index_dict, hidden_state=None, edge_attr_dict=None):
+        
+        # ------------------------------------------------------------------
+        # FIX 2: THE NONE CRASH FALLBACK FOR EDGE ATTRIBUTES
+        # ------------------------------------------------------------------
+        if edge_attr_dict is None:
+            edge_type = ('lane', 'part_of', 'intersection')
+            if edge_type in edge_index_dict:
+                # Dynamically calculate how many edges exist in the current batch
+                num_edges = edge_index_dict[edge_type].size(1)
+                device = edge_index_dict[edge_type].device
+                # Generate a dummy tensor of zeros to prevent matrix multiplication crash
+                dummy_attr = torch.zeros((num_edges, GraphConfig.EDGE_INPUT_DIM), dtype=torch.float32, device=device)
+                edge_attr_dict = {edge_type: dummy_attr}
+
         # 1. Encode Raw Features
         x_dict_encoded = {}
         for node_type, x in x_dict.items():
             x_dict_encoded[node_type] = F.relu(self.encoder_dict[node_type](x))
 
-        # 2. [Uncertainty Injection 1]: Spatial Processing (GNN)
-        # [NEW] Pass the edge attributes into the convolution layer
-        if edge_attr_dict is not None:
-            x_dict_out = self.conv1(x_dict_encoded, edge_index_dict, edge_attr_dict=edge_attr_dict)
-        else:
-            raise ValueError("edge_attr_dict is required because GATConv expects EDGE_INPUT_DIM.")
+        # 2. Spatial Processing: Layer 1 (Contextualize)
+        # Calculates lane-to-lane flow and intersection coordination
+        x_dict_context = self.conv1_context(x_dict_encoded, edge_index_dict)
         
-        # Apply Activation & The Custom Dropout
-        x_dict_out = {k: self.mc_dropout(F.relu(v)) for k, v in x_dict_out.items()}
-        
-        # 3. Temporal Processing (GRU)
-        intersection_embeddings = x_dict_out['intersection']
+        # Apply Residual Connection (Merge Context with Original Encodings)
+        x_dict_res = {}
+        for k in x_dict_encoded.keys():
+            if k in x_dict_context:
+                x_dict_res[k] = F.relu(x_dict_encoded[k] + x_dict_context[k])
+            else:
+                x_dict_res[k] = x_dict_encoded[k]
+
+        # 3. Spatial Processing: Layer 2 (Target)
+        # Feeds the contextually-aware lanes into the intersection via edge features
+        x_dict_out = self.conv2_target(x_dict_res, edge_index_dict, edge_attr_dict=edge_attr_dict)
+
+        # 4. Extract and process Intersection Node (DDP safe, all graphs utilized)
+        intersection_embeddings = self.mc_dropout(F.relu(x_dict_out['intersection']))
         
         if hidden_state is None:
             hidden_state = torch.zeros_like(intersection_embeddings[:, :self.hidden_channels])
@@ -66,10 +93,8 @@ class RecurrentHGAT(nn.Module):
         # Update memory
         new_hidden_state = self.gru(intersection_embeddings, hidden_state)
 
-        # [Uncertainty Injection 2]: Policy Decision Boundary
+        # Policy Decision Boundary
         policy_input = self.mc_dropout(new_hidden_state)
-        
-        # 4. Decision Making (Actor & Critic)
         action_logits, state_value = self.policy_head(policy_input)
         
         return action_logits, state_value, new_hidden_state

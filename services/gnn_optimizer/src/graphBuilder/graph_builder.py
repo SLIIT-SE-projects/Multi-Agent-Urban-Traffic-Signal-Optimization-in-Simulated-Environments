@@ -150,7 +150,8 @@ class TrafficGraphBuilder:
                 raw_p_idx = int(info['phase_index'])
                 p_idx = raw_p_idx % GraphConfig.NUM_SIGNAL_PHASES
                 x_inter[idx, p_idx] = 1.0 
-                x_inter[idx, GraphConfig.NUM_SIGNAL_PHASES] = float(info.get('time_to_switch', 0.0))
+                raw_time_to_switch = float(info.get('time_to_switch', 0.0))
+                x_inter[idx, GraphConfig.NUM_SIGNAL_PHASES] = min(raw_time_to_switch / 60.0, 1.0)
                 
                 # ---------------------------------------------------------
                 # [CRITICAL FIX 2]: Temporal Memory (Phase Duration)
