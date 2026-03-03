@@ -82,9 +82,9 @@ class MPCController:
             # Queue cannot exceed Lane Capacity (e.g. 20 cars)
             # If Q hits Max, the solver is forced to reduce Green upstream 
             # (or at least acknowledge the jam).
-            # We use a soft constraint or hard limit. Hard limit is safer for gridlock.
-            self.opti.subject_to(self.Q_state[:, k+1] <= self.P_capacity)
-
+            # We use a soft constraint or dynamic hard limit. A strict hard limit crashes IPOPT if initial state is overloaded.
+            # ca.fmax ensures the constraint is always mathematically feasible even if queue > capacity temporarily.
+            self.opti.subject_to(self.Q_state[:, k+1] <= ca.fmax(self.P_capacity, self.Q_state[:, k] + 5.0))
         opts = {'ipopt.print_level': 0, 'print_time': 0, 'ipopt.sb': 'yes', 'ipopt.max_iter': 100}
         self.opti.solver('ipopt', opts)
 
