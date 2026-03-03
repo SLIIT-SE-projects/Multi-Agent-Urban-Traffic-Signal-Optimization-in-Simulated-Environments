@@ -52,9 +52,11 @@ class OptimizationConfig(BaseModel):
     time_limit: PositiveFloat = Field(default=0.1, description="Solver time limit in seconds")
 
     # Cost Function Weights
-    weight_queue: float = Field(default=1.0, ge=0.0)
+    # weight_queue=5.0: more aggressive queue reduction vs baseline
+    # weight_switch=2.0: reduced from 10 so optimizer is less afraid to redistribute green
+    weight_queue: float = Field(default=5.0, ge=0.0)
     weight_delay: float = Field(default=0.0, ge=0.0)
-    weight_switch: float = Field(default=10.0, ge=0.0, description="Penalty for changing phases")
+    weight_switch: float = Field(default=2.0, ge=0.0, description="Penalty for changing phases")
 
 
 class MPCConfig(BaseModel):
@@ -65,10 +67,16 @@ class MPCConfig(BaseModel):
 
     prediction_horizon: PositiveInt = Field(default=20, description="Np: Steps to predict forward")
     control_horizon: PositiveInt = Field(default=5, description="Nu: Steps to optimize control")
-    
-    min_green_time: PositiveInt = Field(default=10, description="Minimum green in seconds")
+
+    # Cycle time controls total green budget per intersection per cycle.
+    # 45s matches typical SUMO default cycle and allows 2x more frequent re-optimization
+    # vs the previous 90s value which caused queues to build unchecked between cycles.
+    cycle_time: PositiveInt = Field(default=45, description="Total cycle time in seconds per intersection")
+
+    min_green_time: PositiveInt = Field(default=5, description="Minimum green in seconds (lower = more MPC flexibility)")
     max_green_time: PositiveInt = Field(default=60, description="Maximum green in seconds")
     yellow_time: PositiveInt = Field(default=3, description="Inter-green clearance time")
+
 
     @model_validator(mode='after')
     def check_horizons(self) -> 'MPCConfig':
