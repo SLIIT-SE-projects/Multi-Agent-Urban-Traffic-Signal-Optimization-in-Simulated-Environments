@@ -32,6 +32,36 @@ class StatePredictor(nn.Module):
     def forward(self, hidden_state):
         return self.decoder(hidden_state)
 
+def aggregate_lane_features_per_intersection(next_data, graph_builder):
+    """
+    Vectorized: averages lane features per intersection.
+    Returns shape: (num_intersections, LANE_INPUT_DIM=3)
+    """
+    num_tls = graph_builder.num_intersections
+    lane_feat_dim = next_data['lane'].x.shape[1]
+
+    if graph_builder.static_edges['part_of'].numel() == 0:
+        return torch.zeros((num_tls, lane_feat_dim))
+
+    edge_index = graph_builder.static_edges['part_of']  # (2, num_edges)
+    lane_indices  = edge_index[0]   # shape: (num_edges,)
+    inter_indices = edge_index[1]   # shape: (num_edges,)
+
+    # Gather lane features for all edges at once
+    lane_feats = next_data['lane'].x[lane_indices]  # (num_edges, 3)
+
+    # Scatter-add into intersection buckets
+    agg = torch.zeros((num_tls, lane_feat_dim))
+    agg.scatter_add_(0, inter_indices.unsqueeze(1).expand_as(lane_feats), lane_feats)
+
+    # Count how many lanes per intersection
+    counts = torch.zeros(num_tls)
+    counts.scatter_add_(0, inter_indices, torch.ones(inter_indices.shape[0]))
+    counts = counts.clamp(min=1.0)
+
+    return agg / counts.unsqueeze(1)  # (num_intersections, 3)
+
+
 def train_ssl():
     # 1. Setup Directories
     if not os.path.exists(FileConfig.MODELS_DIR):
@@ -42,6 +72,10 @@ def train_ssl():
     # 2. Load Data
     print(" Loading Dataset...")
     dataset = TrafficDataset(root="experiments", file_path=DATASET_PATH)
+
+    from src.graphBuilder.graph_builder import TrafficGraphBuilder
+    from src.config import SimConfig
+    graph_builder = TrafficGraphBuilder(SimConfig.NET_FILE)
     
     # SPLIT DATASET 
     total_len = len(dataset)
@@ -60,7 +94,7 @@ def train_ssl():
     metadata = sample_graph.metadata()
     
     gnn_model = RecurrentHGAT(HIDDEN_DIM, GraphConfig.NUM_ACTIONS, ModelConfig.NUM_HEADS, metadata)
-    predictor = StatePredictor(HIDDEN_DIM, GraphConfig.INTERSECTION_INPUT_DIM)
+    predictor = StatePredictor(HIDDEN_DIM, GraphConfig.LANE_INPUT_DIM)
     evaluator = Evaluator()
     
     optimizer = optim.Adam(list(gnn_model.parameters()) + list(predictor.parameters()), lr=LEARNING_RATE)
@@ -94,7 +128,7 @@ def train_ssl():
             )
             
             predicted_next_state = predictor(hidden_state)
-            target = next_data['intersection'].x
+            target = aggregate_lane_features_per_intersection(next_data, graph_builder)
             
             loss = criterion(predicted_next_state, target)
             loss.backward()
@@ -129,7 +163,7 @@ def train_ssl():
                 )
                 
                 predicted = predictor(hidden_state_test)
-                target = next_data['intersection'].x
+                target = aggregate_lane_features_per_intersection(next_data, graph_builder)
                 
                 loss = criterion(predicted, target)
                 total_test_loss += loss.item()
@@ -171,4 +205,4 @@ def train_ssl():
     print(f" Pre-training Complete! Plots saved to {PLOT_SAVE_DIR}")
 
 if __name__ == "__main__":
-    train_ssl()
+    train_ssl() 

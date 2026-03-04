@@ -195,9 +195,9 @@ class TrafficGraphBuilder:
             if lane_id in self.lane_map:
                 idx = self.lane_map[lane_id]
                 # Features
-                x_lane[idx, 0] = float(info['queue_length'])
-                x_lane[idx, 1] = float(info['avg_speed'])
-                x_lane[idx, 2] = float(info['waiting_time'])
+                x_lane[idx, 0] = min(float(info['queue_length']) / 50.0, 1.0)
+                x_lane[idx, 1] = min(float(info['avg_speed']) / 13.89, 1.0)
+                x_lane[idx, 2] = min(float(info['waiting_time']) / 120.0, 1.0)
                 
                 # Position (Calculate Center of Lane)
                 try:

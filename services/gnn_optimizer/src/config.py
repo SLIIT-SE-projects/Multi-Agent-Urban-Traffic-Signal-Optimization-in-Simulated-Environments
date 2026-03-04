@@ -27,7 +27,7 @@ class GraphConfig:
 
 class ModelConfig:
     NUM_HEADS = 2      # For GATConv
-    DROPOUT_RATE = 0.3 # Uncertainty Mechanism
+    DROPOUT_RATE = 0.15 # Uncertainty Mechanism
     USE_GRU = True     # Recurrent Wrapper
 
 class TrainConfig:
@@ -35,13 +35,13 @@ class TrainConfig:
     STEPS_TO_COLLECT = 3600  # 2 hours of simulation data
 
     # SSL TRAINING SETTINGS
-    SSL_EPOCHS = 50
+    SSL_EPOCHS = 100
     HIDDEN_DIM = 64            # Up from 32 — needed for 2-layer GNN
     SSL_LEARNING_RATE = 0.001
     TRAIN_SPLIT = 0.8
 
     # MARL TRAINING SETTINGS
-    MARL_EPISODES = 100
+    MARL_EPISODES = 300
     MARL_STEPS_PER_EPISODE = 1000
     MARL_LEARNING_RATE = 1e-4
     ACTION_INTERVAL = 15    
@@ -65,12 +65,12 @@ class TrainConfig:
     W_WAIT = 0.5
 
     # LR Scheduler
-    LR_STEP_SIZE = 999
-    LR_GAMMA = 1.0
+    LR_STEP_SIZE = 80
+    LR_GAMMA = 0.6
 
     # Curriculum
-    EASY_UNTIL_EPISODE = 10
-    MEDIUM_UNTIL_EPISODE = 30
+    EASY_UNTIL_EPISODE = 30
+    MEDIUM_UNTIL_EPISODE = 100
 
     # INFERENCE & SAFETY
     UNCERTAINTY_THRESHOLD = 0.05
