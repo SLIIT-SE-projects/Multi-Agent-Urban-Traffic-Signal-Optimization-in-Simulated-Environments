@@ -55,6 +55,13 @@ emergency_vehicle_preemption/data/processed/
 emergency_vehicle_preemption/**/*.csv
 emergency_vehicle_preemption/**/*.npy
 
+# Ignore SUMO tripinfo XML outputs (Phase 4 evaluation artifacts)
+services/emergency_vehicle_preemption/data/evaluation_results/*.xml
+
+# Ignore generated bulk SUMO scenarios
+services/emergency_vehicle_preemption/simulation/config/bulk_scenarios/
+services/emergency_vehicle_preemption/simulation/routes/bulk_scenarios/
+
 
 
 # ---------------------------

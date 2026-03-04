@@ -36,9 +36,10 @@ class DemandPredictor:
         
         # 1. Initialize Model Architecture
         # Output size = Lanes * Horizon (Predicting flow for every lane at every future step)
+        # hidden_size=128 matches train_model.py (was 64 -- must stay in sync after retraining)
         self.model = TrafficLSTM(
             input_size=self.n_lanes,
-            hidden_size=64,
+            hidden_size=128,
             output_size=self.n_lanes * self.cfg.prediction_horizon
         )
         

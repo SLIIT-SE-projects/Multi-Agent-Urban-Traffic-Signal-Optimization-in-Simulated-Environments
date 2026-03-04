@@ -5,12 +5,14 @@ interface AutoSteppingControlsProps {
   onRefresh?: () => void
   isRunning?: boolean
   isPaused?: boolean
+  suppressDemand?: boolean
 }
 
 export function AutoSteppingControls({
   onRefresh,
   isRunning = false,
   isPaused = false,
+  suppressDemand = true,
 }: AutoSteppingControlsProps) {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -68,7 +70,7 @@ export function AutoSteppingControls({
         <button
           onClick={() => handleAction(
             async () => {
-              await startSimulation()
+              await startSimulation({ suppressDemand })
               await startAutoStep(stepDelay)
             },
             'Play'

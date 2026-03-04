@@ -8,6 +8,7 @@ import pickle
 import asyncio
 import json
 import uvicorn
+import random
 from collections import deque
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
@@ -16,12 +17,12 @@ from fastapi.middleware.cors import CORSMiddleware
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 MODEL_PATH = os.path.join(BASE_DIR, "../models/saved/eta_predictor.h5")
 SCALER_PATH = os.path.join(BASE_DIR, "../data/scalers/eta_scaler.pkl")
-SUMO_CONFIG = os.path.join(BASE_DIR, "../simulation/config/colombo_mega_scenario.sumocfg") 
+SAFETY_MODEL_PATH = os.path.join(BASE_DIR, "../models/saved/outcome_safety_classifier.pkl")
+SUMO_CONFIG = os.path.join(BASE_DIR, "../simulation/config/colombo_mega_scenario.sumocfg")
 
 # Initialize FastAPI
 app = FastAPI()
 
-# Allow CORS for Flutter Web
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -32,7 +33,7 @@ app.add_middleware(
 
 class GreenWaveController:
     def __init__(self): 
-        self.ev_id = "EV_0" # Default
+        self.ev_id = "EV_0" # The EV currently focused on the Mobile App
         self.running = False
         
         print("Loading AI Models...")
@@ -40,23 +41,31 @@ class GreenWaveController:
             self.model = tf.keras.models.load_model(MODEL_PATH)
             with open(SCALER_PATH, "rb") as f:
                 self.scaler = pickle.load(f)
-            print("SUCCESS: Models loaded.")
+            
+            # Load the new Target (ETA) Scaler
+            TARGET_SCALER_PATH = os.path.join(BASE_DIR, "../data/scalers/eta_target_scaler.pkl")
+            with open(TARGET_SCALER_PATH, "rb") as f:
+                self.target_scaler = pickle.load(f)
+
+            with open(SAFETY_MODEL_PATH, "rb") as f:
+                self.safety_model = pickle.load(f)
+            print("SUCCESS: All Models loaded.")
         except Exception as e:
             print(f"CRITICAL ERROR: Could not load models. {e}")
             sys.exit(1)
 
         self.sequence_length = 10
-        self.state_buffer = deque(maxlen=self.sequence_length)
-        
-        # State
-        self.active_override_tls_ids = set() 
-        self.active_green_lane = None
-        self.smoothed_eta = None 
         self.alpha = 0.3
-        self.last_broadcast_status = {}
+        
+        # --- FLEET ARCHITECTURE ---
+        # self.fleet manages the state of ALL active EVs in the simulation
+        self.fleet = {} 
+        
+        # State Lock-In: Maps {tls_id: winner_ev_id}
+        # Ensures that once an EV wins and locks a light, it keeps it until it passes.
+        self.active_override_tls_ids = {} 
 
     def start_sumo(self):
-        """Starts SUMO in GUI mode."""
         sumo_cmd = ["sumo-gui", "-c", SUMO_CONFIG, "--start"]
         traci.start(sumo_cmd)
         self.running = True
@@ -66,11 +75,9 @@ class GreenWaveController:
         try:
             traci.close()
             self.running = False
-        except:
-            pass
+        except: pass
 
     def simulation_step(self):
-        """Runs ONE step of the simulation logic."""
         if not self.running: return None
 
         try:
@@ -80,213 +87,216 @@ class GreenWaveController:
 
             traci.simulationStep()
             
-            # If the selected EV is not in simulation, try to find it or wait
-            if self.ev_id not in traci.vehicle.getIDList():
-                # self.ev_id remains set, but we can't control it yet
-                # Optional: Auto-switch logic could go here if requested
-                return self._build_status_packet(active=False)
-
-            # --- CONTROL LOGIC ---
-            features = self._get_live_features()
-            if features:
-                self.state_buffer.append(features)
-                if len(self.state_buffer) == self.sequence_length:
-                    raw_eta = self._predict_eta()
-                    if self.smoothed_eta is None: self.smoothed_eta = raw_eta
-                    else: self.smoothed_eta = (self.alpha * raw_eta) + ((1 - self.alpha) * self.smoothed_eta)
-                    
-                    self._manage_preemption(self.smoothed_eta)
+            # --- 1. GLOBAL RADAR: Update state for ALL vehicles ---
+            self._update_global_fleet_state()
             
-            return self._build_status_packet(active=True)
+            # --- 2. THE ARBITER: Manage conflicts and preemption for ALL vehicles ---
+            self._manage_fleet_preemption()
+
+            # --- 3. PRESENTATION: Return data only for the selected EV to the App ---
+            return self._build_status_packet()
 
         except Exception as e:
             print(f"Sim Error: {e}")
             return None
 
     def switch_vehicle(self, new_ev_id):
-        """Called by Flutter App to switch tracking."""
-        print(f"Command received: Switch to {new_ev_id}")
+        """Called by Flutter App to change the UI Focus."""
+        print(f"UI Focus switched to {new_ev_id}")
         self.ev_id = new_ev_id
-        self.state_buffer.clear()
-        for old_id in list(self.active_override_tls_ids):
-            self._release_control(old_id)
-        self.smoothed_eta = None
-        
-        # Try to track visually in SUMO immediately
         try:
             traci.gui.trackVehicle("View #0", self.ev_id)
             traci.gui.setZoom("View #0", 600)
-        except:
-            pass # Vehicle might not exist yet
+        except: pass
 
-    def _build_status_packet(self, active):
-        if not active:
-            return {
-                "type": "status",
-                "ev_id": self.ev_id,
-                "active": False,
-                "eta": 0.0,
-                "speed": 0.0,
-                "lat": 0.0,
-                "lon": 0.0,
-                "green_wave_active": False,
-                "tls_id": ""
-            }
+    def set_ev_priority(self, target_ev_id, new_priority):
+        """Called by Flutter App to dynamically change an EV's dispatch priority."""
+        if target_ev_id in self.fleet:
+            self.fleet[target_ev_id]["priority"] = int(new_priority)
+            print(f"Elevated {target_ev_id} to Priority Level {new_priority}")
 
-        try:
-            speed = traci.vehicle.getSpeed(self.ev_id)
-            x, y = traci.vehicle.getPosition(self.ev_id)
+    # ==========================================
+    # --- FLEET RADAR & STATE MANAGEMENT ---
+    # ==========================================
+    def _update_global_fleet_state(self):
+        active_vehicles = traci.vehicle.getIDList()
+        current_evs = [v for v in active_vehicles if v.startswith("EV_")]
+        
+        # Remove EVs that finished their route
+        stale_evs = [ev for ev in self.fleet.keys() if ev not in current_evs]
+        for ev in stale_evs:
+            del self.fleet[ev]
+
+        # Update or initialize active EVs
+        for ev in current_evs:
+            if ev not in self.fleet:
+                self.fleet[ev] = {
+                    "buffer": deque(maxlen=self.sequence_length),
+                    "smoothed_eta": None,
+                    "priority": random.choice([1, 2]), # Default to Standard or Medium
+                    "safety_blocked": False,
+                    "speed": 0.0
+                }
             
-            # --- GEO-CONVERSION ---
-            # Use SUMO's built-in conversion for accurate Real-World mapping
-            try:
-                lon, lat = traci.simulation.convertGeo(x, y)
-            except Exception as e:
-                # Fallback if projection fails
-                print(f"GeoConversion Error: {e}")
-                lat, lon = 0.0, 0.0
-
-            # Get Distance to Next TLS
-            dist_to_tls = 0.0
-            try:
-                next_tls_info = traci.vehicle.getNextTLS(self.ev_id)
-                if next_tls_info:
-                    # Format: (tlsID, tlsIndex, distance, state)
-                    dist_to_tls = next_tls_info[0][2]
-            except: pass
-
-            is_green_wave = (len(self.active_override_tls_ids) > 0)
-            
-            # Find the "active" TLS to show in UI (the closest one that is currently overridden)
-            display_tls_id = ""
-            try:
-                next_all = traci.vehicle.getNextTLS(self.ev_id)
-                for tls_item in next_all:
-                    if tls_item[0] in self.active_override_tls_ids:
-                        display_tls_id = tls_item[0]
-                        break
-            except: pass
-            
-            # Get Active Junctions for Map
-            active_junctions = []
-            for tls_id in self.active_override_tls_ids:
-                j_lon, j_lat = 0.0, 0.0
-                try:
-                    # PRIMARY METHOD: Get location from controlled lanes
-                    lanes = traci.trafficlight.getControlledLanes(tls_id)
-                    if lanes:
-                        # Use the stop line of the first controlled lane
-                        first_lane_shape = traci.lane.getShape(lanes[0])
-                        if first_lane_shape:
-                            j_pos = first_lane_shape[-1] 
-                            j_lon, j_lat = traci.simulation.convertGeo(j_pos[0], j_pos[1])
-                    
-                    # FALLBACK: If no lanes found (rare), try Junction retrieval
-                    if j_lon == 0.0 and j_lat == 0.0:
-                         j_pos = traci.junction.getPosition(tls_id)
-                         j_lon, j_lat = traci.simulation.convertGeo(j_pos[0], j_pos[1])
-
-                except Exception as e:
-                    # Fail silently for this light if both methods fail
-                    # print(f"Map Loc Error {tls_id}: {e}")
-                    pass
+            # Extract features for ETA Prediction
+            features = self._get_live_features(ev)
+            if features:
+                fleet_ev = self.fleet[ev]
+                fleet_ev["buffer"].append(features)
+                fleet_ev["speed"] = features[0]
                 
-                if j_lat != 0.0 and j_lon != 0.0:
-                    active_junctions.append({
-                        "id": tls_id,
-                        "lat": j_lat,
-                        "lon": j_lon
-                    })
+                # Predict ETA if buffer is full
+                if len(fleet_ev["buffer"]) == self.sequence_length:
+                    raw_eta = self._predict_eta(ev)
+                    if fleet_ev["smoothed_eta"] is None: 
+                        fleet_ev["smoothed_eta"] = raw_eta
+                    else: 
+                        fleet_ev["smoothed_eta"] = (self.alpha * raw_eta) + ((1 - self.alpha) * fleet_ev["smoothed_eta"])
 
-            return {
-                "type": "status",
-                "ev_id": self.ev_id,
-                "active": True,
-                "eta": float(f"{self.smoothed_eta:.1f}") if self.smoothed_eta else 0.0,
-                "speed": float(f"{speed * 3.6:.1f}"),
-                "dist_to_tls": float(f"{dist_to_tls:.1f}"),
-                "lat": lat,
-                "lon": lon,
-                "green_wave_active": is_green_wave,
-                "tls_id": display_tls_id,
-                "active_junctions": active_junctions
-            }
-        except:
-            return self._build_status_packet(active=False)
+    # ==========================================
+    # --- MULTI-EV PRIORITY ARBITER ---
+    # ==========================================
+    def _manage_fleet_preemption(self):
+        # 1. CLEANUP STALE LOCKS (Hysteresis Release)
+        # If the winning EV passed the light or disconnected, release the lock.
+        locks_to_remove = []
+        for tls_id, owner_id in self.active_override_tls_ids.items():
+            if owner_id not in self.fleet:
+                locks_to_remove.append(tls_id)
+            else:
+                try:
+                    next_tls_list = [t[0] for t in traci.vehicle.getNextTLS(owner_id)]
+                    if tls_id not in next_tls_list:
+                        locks_to_remove.append(tls_id) # EV passed the intersection
+                except:
+                    locks_to_remove.append(tls_id)
+        
+        for tls_id in locks_to_remove:
+            self._release_control(tls_id)
 
-    # --- REUSED LOGIC FROM PREVIOUS CONTROLLER ---
+        # 2. THE AUCTION HOUSE (Gather all bids)
+        intersection_bids = {} # {tls_id: [ {ev_id, priority, eta, index} ] }
+        
+        for ev, data in self.fleet.items():
+            if data["smoothed_eta"] is None: continue
+            
+            try:
+                next_tls_list = traci.vehicle.getNextTLS(ev)
+                planning_speed = max(data["speed"], 10.0)
+
+                for i, tls_info in enumerate(next_tls_list):
+                    t_id = tls_info[0]
+                    t_index = tls_info[1]
+                    t_dist = tls_info[2]
+                    
+                    if i == 0: t_eta = data["smoothed_eta"]
+                    else: t_eta = t_dist / planning_speed
+
+                    if t_eta < 30.0:
+                        if t_id not in intersection_bids:
+                            intersection_bids[t_id] = []
+                        
+                        # Apply Hysteresis: If this EV already owns the lock, give it infinite priority
+                        bid_priority = data["priority"]
+                        if self.active_override_tls_ids.get(t_id) == ev:
+                            bid_priority = 999 
+
+                        intersection_bids[t_id].append({
+                            "ev_id": ev,
+                            "priority": bid_priority,
+                            "eta": t_eta,
+                            "speed": data["speed"],
+                            "tls_index": t_index,
+                            "order": i # Track if it's the immediate light (0) or downstream
+                        })
+            except: pass
+
+        # 3. RESOLVE CONFLICTS (Who wins?)
+        provisional_wins = {ev: [] for ev in self.fleet.keys()} # {ev_id: [tls_id_1, tls_id_2]}
+
+        for tls_id, bids in intersection_bids.items():
+            # Hierarchy of Needs: Sort by Priority (Desc), then ETA (Asc), then Speed (Desc)
+            bids.sort(key=lambda x: (-x["priority"], x["eta"], -x["speed"]))
+            winner = bids[0]
+            provisional_wins[winner["ev_id"]].append({
+                "tls_id": tls_id, 
+                "index": winner["tls_index"],
+                "order": winner["order"]
+            })
+
+        # 4. SAFETY CHECK & EXECUTION (Cascading Block logic)
+        for ev, won_lights in provisional_wins.items():
+            self.fleet[ev]["safety_blocked"] = False # Reset flag
+            won_lights.sort(key=lambda x: x["order"]) # Ensure we process sequential order A -> B -> C
+
+            for light in won_lights:
+                t_id = light["tls_id"]
+                t_index = light["index"]
+
+                # If we already locked it, skip safety check (Hysteresis)
+                if self.active_override_tls_ids.get(t_id) == ev:
+                    continue 
+
+                # Ask the Gatekeeper
+                is_safe = self._evaluate_safety(t_id, ev)
+                
+                if is_safe:
+                    self._force_green_wave(t_id, t_index, ev)
+                else:
+                    # AI DENIED PREEMPTION -> CASCADE BLOCK
+                    self.fleet[ev]["safety_blocked"] = True
+                    if light["order"] == 0:
+                        print(f"⚠️ SAFETY GUARD: {ev} denied at {t_id} (Gridlock risk).")
+                    break # Halt downstream preemption for this EV
+
     def _release_control(self, tls_id):
         if tls_id in self.active_override_tls_ids:
-            try:
-                traci.trafficlight.setProgram(tls_id, "0")
+            try: traci.trafficlight.setProgram(tls_id, "0")
             except: pass
-            self.active_override_tls_ids.discard(tls_id)
+            del self.active_override_tls_ids[tls_id]
 
-    def _manage_preemption(self, eta_first_light):
+    # ==========================================
+    # --- AI INFERENCE METHODS (Updated for Fleet) ---
+    # ==========================================
+    def _evaluate_safety(self, tls_id, ev_id):
         try:
-            # 1. Get ALL upcoming traffic lights on the route
-            next_tls_list = traci.vehicle.getNextTLS(self.ev_id)
-            if not next_tls_list:
-                # No lights ahead, release everything
-                for old_id in list(self.active_override_tls_ids):
-                    self._release_control(old_id)
-                return
+            ev_lane = traci.vehicle.getLaneID(ev_id)
+            downstream_lane = self._get_downstream_lane(ev_id)
+            if not downstream_lane: return True
 
-            # 2. Identify which lights need to be GREEN
-            target_green_map = {} # {tls_id: tls_index}
-            
-            current_speed = traci.vehicle.getSpeed(self.ev_id)
-            planning_speed = max(current_speed, 10.0)
+            target_queue = traci.lane.getLastStepHaltingNumber(ev_lane)
+            all_lanes = traci.trafficlight.getControlledLanes(tls_id)
+            conflicting_vol = sum(
+                traci.lane.getLastStepVehicleNumber(lane) 
+                for lane in set(all_lanes) if lane != ev_lane
+            )
+            time_since_change = 10.0 
+            num_conflicting_lanes = len(set(all_lanes)) - 1
+            downstream_len = traci.lane.getLength(downstream_lane)
+            clearance_dist = num_conflicting_lanes * 3.5
 
-            for i, tls_info in enumerate(next_tls_list):
-                t_id = tls_info[0]
-                t_index = tls_info[1]
-                t_dist = tls_info[2]
-                
-                if i == 0: t_eta = eta_first_light
-                else: t_eta = t_dist / planning_speed
+            feature_cols = [
+                "target_queue_length", "conflicting_volume", "time_since_last_phase", 
+                "num_conflicting_lanes", "downstream_lane_length", "clearance_distance"
+            ]
+            features_df = pd.DataFrame([[
+                target_queue, conflicting_vol, time_since_change, 
+                max(1, num_conflicting_lanes), downstream_len, clearance_dist
+            ]], columns=feature_cols)
 
-                if i == 0:
-                    # First Light: Use AI ETA
-                    if t_eta < 30.0:
-                        if t_id not in target_green_map:
-                            target_green_map[t_id] = t_index
-                else:
-                     # Subsequent Lights: Distance 100m
-                     if t_dist < 100.0:
-                        if t_id not in target_green_map:
-                            target_green_map[t_id] = t_index
-
-            # 3. Apply Controls
-            
-            # A. Release lights that are no longer targets
-            current_active = list(self.active_override_tls_ids)
-            for old_id in current_active:
-                if old_id not in target_green_map:
-                    self._release_control(old_id)
-
-            # B. Turn ON new targets
-            for new_id, new_index in target_green_map.items():
-                if new_id not in self.active_override_tls_ids:
-                    self._force_green_wave(new_id, new_index)
+            prediction = self.safety_model.predict(features_df)[0]
+            if prediction == 1: return False # UNSAFE
+            return True # SAFE
 
         except Exception as e:
-            print(f"Preemption Logic Error: {e}")
+            return True 
 
-    def _force_green_wave(self, tls_id, tls_index):
+    def _force_green_wave(self, tls_id, tls_index, ev_id):
         try:
-            # STRATEGY: Phase Selection (Safest)
-            # Instead of manually constructing "rrGrr", we pick a pre-defined phase
-            # from the traffic light's program that is GREEN for our index.
-            
             logic = traci.trafficlight.getAllProgramLogics(tls_id)[0]
             phases = logic.phases
-            
             best_phase_idx = -1
-            
-            # Find the best phase
             for i, phase in enumerate(phases):
-                # Check if this phase executes Green for our EV's link
                 if len(phase.state) > tls_index:
                     char = phase.state[tls_index]
                     if char == 'G' or char == 'g':
@@ -294,69 +304,132 @@ class GreenWaveController:
                         break
             
             if best_phase_idx != -1:
-                traci.trafficlight.setPhase(tls_id, best_phase_idx)
-                # Extend duration to ensure it stays green? 
-                # Actually setPhase sets the index, but logic keeps running.
-                # We need to freeze it or set remaining duration.
-                # Forcing the phase resets the timer usually. 
-                # To lock it, we might need to setPhaseDuration too, but let's stick to setPhase which is standard override.
-                # Wait, setPhase just jumps time. The logic continues. 
-                # To HOLD it, we must use setRedYellowGreenState OR setPhaseDuration(huge).
-                
-                # Better approach for holding:
-                # 1. Jump to the Green Phase
-                # 2. Extract that phase's State String
-                # 3. Force that State String manually (Freezing it)
-                
                 target_state = phases[best_phase_idx].state
                 traci.trafficlight.setRedYellowGreenState(tls_id, target_state)
-                self.active_override_tls_ids.add(tls_id)
-                
-            else:
-                print(f"SAFETY ABORT: No existing Green phase found for index {tls_index} at {tls_id}.")
-                return
-
+                # Assign Lock Ownership to this EV!
+                self.active_override_tls_ids[tls_id] = ev_id
         except Exception as e:
-            print(f"Force Green Error: {e}")
-            
-            # Visuals
-            traci.vehicle.setColor(self.ev_id, (0, 0, 255, 255))
-        except: pass
+            pass
 
-    def _get_live_features(self):
+    def _get_live_features(self, ev_id):
         try:
-            speed = traci.vehicle.getSpeed(self.ev_id)
-            accel = traci.vehicle.getAcceleration(self.ev_id)
-            lane_id = traci.vehicle.getLaneID(self.ev_id)
-            pos = traci.vehicle.getLanePosition(self.ev_id)
+            speed = traci.vehicle.getSpeed(ev_id)
+            accel = traci.vehicle.getAcceleration(ev_id)
+            lane_id = traci.vehicle.getLaneID(ev_id)
+            pos = traci.vehicle.getLanePosition(ev_id)
             try: dist = traci.lane.getLength(lane_id) - pos
             except: dist = 0
             queue = traci.lane.getLastStepHaltingNumber(lane_id)
-            leader = traci.vehicle.getLeader(self.ev_id, 200)
+            leader = traci.vehicle.getLeader(ev_id, 200)
             if leader: l_gap, l_speed = leader[1], traci.vehicle.getSpeed(leader[0])
             else: l_gap, l_speed = 200, 30
             
-            tls_val = 0.0
-            next_tls = traci.vehicle.getNextTLS(self.ev_id)
-            if next_tls:
-                s = next_tls[0][3]
-                if s in ['r', 'R', 'u']: tls_val = 1.0 
-                elif s in ['y', 'Y']: tls_val = 0.5    
-            
-            return [speed, accel, dist, queue, l_gap, l_speed, tls_val]
+            return [speed, accel, dist, queue, l_gap, l_speed]
         except: return None
 
-    def _predict_eta(self):
-        # (Same prediction logic as before)
-        raw_sequence = np.array(self.state_buffer)
+    def _predict_eta(self, ev_id):
+        raw_sequence = np.array(self.fleet[ev_id]["buffer"])
         feature_cols = ['speed', 'acceleration', 'distance_to_signal', 
-                        'queue_length', 'leader_gap', 'leader_speed', 'tls_state']
+                        'queue_length', 'leader_gap', 'leader_speed']
         scaled = np.zeros_like(raw_sequence)
         for i in range(len(raw_sequence)):
             step_df = pd.DataFrame([raw_sequence[i]], columns=feature_cols)
             scaled[i] = self.scaler.transform(step_df)[0]
-        input_data = scaled.reshape(1, self.sequence_length, 7)
-        return self.model.predict(input_data, verbose=0)[0][0]
+        input_data = scaled.reshape(1, self.sequence_length, 6)
+        normalized_eta = self.model.predict(input_data, verbose=0)
+        return self.target_scaler.inverse_transform(normalized_eta)[0][0]
+
+    def _get_downstream_lane(self, ev_id):
+        try:
+            route = traci.vehicle.getRoute(ev_id)
+            curr_edge = traci.vehicle.getRoadID(ev_id)
+            if curr_edge in route:
+                idx = route.index(curr_edge)
+                if idx + 1 < len(route):
+                    next_edge = route[idx + 1]
+                    return f"{next_edge}_0" 
+        except: pass
+        return None
+
+    # ==========================================
+    # --- PRESENTATION / API ---
+    # ==========================================
+    def _build_status_packet(self):
+        # We only send data for the UI-selected vehicle
+        if self.ev_id not in self.fleet:
+            return {
+                "type": "status", "ev_id": self.ev_id, "active": False,
+                "eta": 0.0, "speed": 0.0, "lat": 0.0, "lon": 0.0,
+                "priority": 1, "green_wave_active": False, "safety_blocked": False,
+                "tls_id": "", "active_junctions": []
+            }
+
+        ev_data = self.fleet[self.ev_id]
+        
+        try:
+            speed = ev_data["speed"]
+            x, y = traci.vehicle.getPosition(self.ev_id)
+            try: lon, lat = traci.simulation.convertGeo(x, y)
+            except: lat, lon = 0.0, 0.0
+
+            dist_to_tls = 0.0
+            display_tls_id = ""
+            try:
+                next_tls_info = traci.vehicle.getNextTLS(self.ev_id)
+                if next_tls_info:
+                    dist_to_tls = next_tls_info[0][2]
+                    # Find if any upcoming lights are locked by THIS specific EV
+                    for tls_item in next_tls_info:
+                        if self.active_override_tls_ids.get(tls_item[0]) == self.ev_id:
+                            display_tls_id = tls_item[0]
+                            break
+            except: pass
+
+            is_green_wave = (display_tls_id != "")
+            
+            # Show ONLY junctions locked by this specific EV on the map
+            active_junctions = []
+            for tls_id, owner in self.active_override_tls_ids.items():
+                if owner == self.ev_id:
+                    try:
+                        j_pos = traci.junction.getPosition(tls_id)
+                    except Exception:
+                        try:
+                            # Fallback if tls_id is not a valid junction ID
+                            links = traci.trafficlight.getControlledLinks(tls_id)
+                            if links and len(links) > 0 and len(links[0]) > 0:
+                                in_lane = links[0][0][0]
+                                shape = traci.lane.getShape(in_lane)
+                                j_pos = shape[-1] # Last point of incoming lane
+                            else:
+                                continue
+                        except Exception as e:
+                            print(f"Failed to resolve position for TLS {tls_id}: {e}")
+                            continue
+                    
+                    try:
+                        j_lon, j_lat = traci.simulation.convertGeo(j_pos[0], j_pos[1])
+                        active_junctions.append({"id": tls_id, "lat": j_lat, "lon": j_lon})
+                    except Exception as e:
+                        print(f"Geo conversion failed for {tls_id}: {e}")
+
+            return {
+                "type": "status",
+                "ev_id": self.ev_id,
+                "active": True,
+                "eta": float(f"{ev_data['smoothed_eta']:.1f}") if ev_data['smoothed_eta'] else 0.0,
+                "speed": float(f"{speed * 3.6:.1f}"),
+                "dist_to_tls": float(f"{dist_to_tls:.1f}"),
+                "lat": lat,
+                "lon": lon,
+                "priority": ev_data["priority"],
+                "green_wave_active": is_green_wave,
+                "safety_blocked": ev_data["safety_blocked"],
+                "tls_id": display_tls_id,
+                "active_junctions": active_junctions
+            }
+        except:
+            return {"type": "status", "ev_id": self.ev_id, "active": False}
 
 # --- GLOBAL INSTANCE ---
 controller = GreenWaveController()
@@ -367,32 +440,28 @@ async def websocket_endpoint(websocket: WebSocket):
     await websocket.accept()
     print("Flutter Client Connected!")
     
-    # Start SUMO if not running
     if not controller.running:
         controller.start_sumo()
 
     try:
         while True:
-            # 1. Run Simulation Step
             status = controller.simulation_step()
-            
-            # 2. Broadcast Status to Flutter
             if status:
                 await websocket.send_text(json.dumps(status))
             
-            # 3. Check for Incoming Commands (Non-blocking)
             try:
-                # We use a very short timeout to poll for messages
                 data = await asyncio.wait_for(websocket.receive_text(), timeout=0.05)
                 message = json.loads(data)
                 
                 if message["type"] == "switch_ev":
                     controller.switch_vehicle(message["ev_id"])
+                elif message["type"] == "set_priority":
+                    # NEW: Flutter app can dictate priority level dynamically
+                    controller.set_ev_priority(message["ev_id"], message["priority"])
                     
             except asyncio.TimeoutError:
-                pass # No message received, continue loop
+                pass 
             
-            # Control loop rate (approx 10Hz)
             await asyncio.sleep(0.1)
             
     except WebSocketDisconnect:

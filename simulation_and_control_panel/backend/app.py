@@ -21,8 +21,8 @@ socketio = SocketIO(app, cors_allowed_origins="*", async_mode='threading')
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 # CHANGE THIS to your actual config file!
 # CONFIG_FILE = os.path.join(BASE_DIR, "..", "scenarios", "mapishara.sumo.cfg")
-# CONFIG_FILE = os.path.join(BASE_DIR, "..", "scenarios", "grid3x3", "grid3x3.sumo.cfg")
-CONFIG_FILE = os.path.join(BASE_DIR, "..", "..", "services", "emergency_vehicle_preemption", "simulation", "config", "katunayake.sumocfg")
+CONFIG_FILE = os.path.join(BASE_DIR, "..", "scenarios", "grid3x3", "grid3x3.sumo.cfg")
+# CONFIG_FILE = os.path.join(BASE_DIR, "..", "..", "services", "emergency_vehicle_preemption", "simulation", "config", "katunayake.sumocfg")
 
 # Initialize controllers
 green_wave_controller = GreenWaveController(use_gui=config.USE_GUI)
@@ -76,7 +76,9 @@ def health_check():
 
 @app.route('/api/simulation/start', methods=['POST'])
 def start_simulation():
-    result = sim_controller.start()
+    data = request.get_json(silent=True) or {}
+    suppress_demand = bool(data.get('suppress_demand', False))
+    result = sim_controller.start(suppress_demand=suppress_demand)
     return jsonify(result)
 
 
@@ -288,6 +290,66 @@ def get_topology():
 
 
 # ============================================================================
+# DYNAMIC FLOW RATE ENDPOINTS
+# ============================================================================
+
+@app.route('/api/simulation/routes', methods=['GET'])
+def get_routes():
+    """Return all route IDs currently loaded in the running simulation."""
+    result = sim_controller.get_routes()
+    return jsonify(result)
+
+
+@app.route('/api/simulation/flow-rate', methods=['POST'])
+def set_flow_rate():
+    """Adjust vehicle insertion rate for a single route at runtime.
+
+    Expected JSON body::
+
+        {"route_id": "route_0", "vehicles_per_hour": 300}
+    """
+    data = request.get_json(silent=True) or {}
+    route_id = data.get('route_id')
+    vehicles_per_hour = data.get('vehicles_per_hour')
+
+    if not route_id:
+        return jsonify({"status": "error", "message": "route_id is required"}), 400
+    if vehicles_per_hour is None:
+        return jsonify({"status": "error", "message": "vehicles_per_hour is required"}), 400
+
+    try:
+        vehicles_per_hour = float(vehicles_per_hour)
+    except (TypeError, ValueError):
+        return jsonify({"status": "error", "message": "vehicles_per_hour must be a number"}), 400
+
+    result = sim_controller.set_flow_rate(route_id, vehicles_per_hour)
+    return jsonify(result)
+
+
+@app.route('/api/simulation/flow-rate/global', methods=['POST'])
+def set_global_flow_rate():
+    """Apply a single vehicle insertion rate to every route in the simulation.
+
+    Expected JSON body::
+
+        {"vehicles_per_hour": 300}
+    """
+    data = request.get_json(silent=True) or {}
+    vehicles_per_hour = data.get('vehicles_per_hour')
+
+    if vehicles_per_hour is None:
+        return jsonify({"status": "error", "message": "vehicles_per_hour is required"}), 400
+
+    try:
+        vehicles_per_hour = float(vehicles_per_hour)
+    except (TypeError, ValueError):
+        return jsonify({"status": "error", "message": "vehicles_per_hour must be a number"}), 400
+
+    result = sim_controller.set_global_flow_rate(vehicles_per_hour)
+    return jsonify(result)
+
+
+# ============================================================================
 # MPC BASELINE ENDPOINTS
 # ============================================================================
 
@@ -299,12 +361,20 @@ def get_mpc_baseline():
     if os.path.exists(BASELINE_FILE):
         try:
             with open(BASELINE_FILE, 'r') as f:
-                data = json.load(f)
-            return jsonify({"status": "success", "data": data})
+                payload = json.load(f)
+            # Handle both old format (plain list) and new format ({meta, data})
+            if isinstance(payload, list):
+                return jsonify({"status": "success", "data": payload, "meta": None})
+            elif isinstance(payload, dict) and "data" in payload:
+                return jsonify({"status": "success", "data": payload["data"], "meta": payload.get("meta")})
+            else:
+                return jsonify({"status": "error", "message": "Unrecognised baseline format"})
         except Exception as e:
             return jsonify({"status": "error", "message": str(e)})
     else:
         return jsonify({"status": "not_found", "message": "No baseline file found"}), 404
+
+
 
 @app.route('/api/mpc/baseline', methods=['POST'])
 def save_mpc_baseline():
@@ -316,6 +386,116 @@ def save_mpc_baseline():
         return jsonify({"status": "success", "message": "Baseline saved"})
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)})
+
+# ============================================================================
+# BASELINE RECORDER — Headless background 500-step runner
+# ============================================================================
+
+import threading
+
+_baseline_recorder_state = {
+    "running": False,
+    "step": 0,
+    "target": 500,
+    "error": None,
+}
+
+@app.route('/api/mpc/baseline/record', methods=['POST'])
+def start_baseline_record():
+    """Start a headless baseline recording for exactly 500 steps.
+    
+    Optional JSON body:
+    {
+        "scenario": "grid3x3",      # Scenario folder name to use
+        "flow_rate": 300,            # Global vehicles/hour to apply to all routes
+        "steps": 500                 # Number of steps (default 500)
+    }
+    """
+    global _baseline_recorder_state
+    if _baseline_recorder_state["running"]:
+        return jsonify({"status": "error", "message": "Recording already in progress"}), 400
+
+    body = request.get_json(silent=True) or {}
+    requested_scenario = body.get("scenario")       # e.g. "grid3x3"
+    requested_flow_rate = body.get("flow_rate")     # e.g. 300  (vehicles per hour)
+    steps = int(body.get("steps", 500))
+
+    def _run():
+        global _baseline_recorder_state
+        _baseline_recorder_state = {"running": True, "step": 0, "target": steps, "error": None}
+        collected = []
+        try:
+            # 1. Unload any optimizer — pure default signals only
+            sim_controller.unload_optimizer()
+
+            # 2. Stop any running simulation before reconfiguring
+            if sim_controller.is_running:
+                sim_controller.stop()
+
+            # 3. Switch scenario if requested
+            if requested_scenario:
+                result = scenario_controller.switch_scenario(requested_scenario)
+                if result.get("status") != "success":
+                    raise RuntimeError(f"Cannot switch scenario: {result.get('message')}")
+
+            # 4. Start simulation fresh
+            sim_controller.start()
+
+            # 5. Apply global flow rate to all routes after start (TraCI is live now)
+            if requested_flow_rate is not None:
+                sim_controller.set_global_flow_rate(float(requested_flow_rate))
+
+            # 6. Run for the requested number of steps
+            for i in range(steps):
+                sim_controller.step()
+                _baseline_recorder_state["step"] = i + 1
+                data = data_controller.get_current_data()
+                collected.append({
+                    "step": data.get("step", i),
+                    "vehicles": data.get("vehicle_count", 0),
+                    "avgSpeed": data.get("stats", {}).get("avg_speed", 0),
+                    "waitingTime": data.get("stats", {}).get("total_waiting_time", 0),
+                    "maxQueue": data.get("stats", {}).get("max_queue_length", 0),
+                })
+
+            # 7. Save results with metadata so we know what config was used
+            payload = {
+                "meta": {
+                    "scenario": requested_scenario or os.path.basename(os.path.dirname(sim_controller.config_file)),
+                    "flow_rate": requested_flow_rate,
+                    "steps": steps,
+                },
+                "data": collected,
+            }
+            with open(BASELINE_FILE, 'w') as f:
+                json.dump(payload, f, indent=2)
+
+            # 8. Stop simulation — recording is done
+            sim_controller.stop()
+        except Exception as e:
+            _baseline_recorder_state["error"] = str(e)
+            print(f"Baseline recorder error: {e}")
+            import traceback; traceback.print_exc()
+        finally:
+            _baseline_recorder_state["running"] = False
+
+    thread = threading.Thread(target=_run, daemon=True)
+    thread.start()
+    return jsonify({"status": "started", "message": f"Baseline recording started for {steps} steps"})
+
+
+
+@app.route('/api/mpc/baseline/record/status', methods=['GET'])
+def baseline_record_status():
+    """Poll the progress of the ongoing baseline recording."""
+    return jsonify({
+        "running": _baseline_recorder_state["running"],
+        "step": _baseline_recorder_state["step"],
+        "target": _baseline_recorder_state["target"],
+        "error": _baseline_recorder_state["error"],
+    })
+
+
 
 
 
