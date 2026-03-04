@@ -37,7 +37,7 @@ class RealTimeInferenceEngine:
         try:
             self.model = RecurrentHGAT(
                 hidden_channels=TrainConfig.HIDDEN_DIM,
-                out_channels=GraphConfig.NUM_SIGNAL_PHASES, # 4 Phases
+                out_channels=GraphConfig.NUM_ACTIONS,
                 num_heads=ModelConfig.NUM_HEADS,
                 metadata=data.metadata()
             )

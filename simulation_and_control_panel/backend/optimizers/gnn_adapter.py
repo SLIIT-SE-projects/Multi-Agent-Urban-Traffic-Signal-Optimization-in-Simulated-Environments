@@ -51,7 +51,7 @@ class PassiveRealTimeEngine(RealTimeInferenceEngine):
             # FIX: Use GraphConfig.NUM_SIGNAL_PHASES instead of hardcoded 4
             self.model = RecurrentHGAT(
                 hidden_channels=TrainConfig.HIDDEN_DIM,
-                out_channels=GraphConfig.NUM_SIGNAL_PHASES, # <--- CHANGED THIS (was 4)
+                out_channels=GraphConfig.NUM_ACTIONS, # <--- CHANGED THIS (was 4)
                 num_heads=ModelConfig.NUM_HEADS,
                 metadata=data.metadata()
             )
@@ -78,6 +78,7 @@ class PassiveRealTimeEngine(RealTimeInferenceEngine):
 # 3. THE OPTIMIZER CLASS (Used by SimulationController)
 # ==============================================================================
 class GNNTrafficOptimizer:
+    is_binary_action = True
     def __init__(self, model_path=None, net_path=None):
         """
         Initializes the optimizer with the specific map used by the Control Panel.
@@ -128,7 +129,8 @@ class GNNTrafficOptimizer:
             batched_logits, _, _ = self.engine.model(
                 batched_data.x_dict, 
                 batched_data.edge_index_dict, 
-                batched_hidden
+                batched_hidden,
+                batched_data.edge_attr_dict
             )
             
             # Convert Logits to Probabilities
@@ -152,7 +154,8 @@ class GNNTrafficOptimizer:
             _, _, self.hidden_state = self.engine.model(
                 data.x_dict, 
                 data.edge_index_dict, 
-                self.hidden_state
+                self.hidden_state,
+                data.edge_attr_dict
             )
 
         print(f"📊 GNN Confidence | Uncertainty (Prob. StdDev): {uncertainty_score:.5f}")
@@ -175,12 +178,8 @@ class GNNTrafficOptimizer:
             if idx not in idx_to_id: continue
             tls_id = idx_to_id[idx]
             
-            manager_target_idx = 0 
-            if model_action == 0: manager_target_idx = 0 
-            elif model_action == 1: manager_target_idx = 1
-            else: manager_target_idx = 0
-            
-            actions_dict[tls_id] = manager_target_idx
+            # model_action is already 0 (keep) or 1 (switch) from argmax of 2-class output
+            actions_dict[tls_id] = model_action  # 0=keep, 1=switch
             
         return actions_dict
 
