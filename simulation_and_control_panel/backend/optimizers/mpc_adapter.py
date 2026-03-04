@@ -141,10 +141,16 @@ class MPCTrafficOptimizer:
             self.all_lanes_ordered = sorted(list(all_lanes_set))
             
             # 2. Path to Model
-            # Assuming standard location relative to mpc_service_path
-            # mpc_service_path is .../services/mpc_traffic_control/src
             data_dir = os.path.abspath(os.path.join(mpc_service_path, "../data"))
             model_path = os.path.join(data_dir, "model.pth")
+            lane_ids_path = os.path.join(data_dir, "lane_ids.json")
+            
+            import json
+            if os.path.exists(lane_ids_path):
+                with open(lane_ids_path, "r") as f:
+                    self.all_lanes_ordered = json.load(f)
+            else:
+                self.all_lanes_ordered = sorted(list(all_lanes_set))
             
             print(f"🔮 Initializing Demand Predictor for {len(self.all_lanes_ordered)} lanes...")
             print(f"   Model Path: {model_path}")
@@ -170,17 +176,20 @@ class MPCTrafficOptimizer:
         # But 'DemandPredictor' needs flow.
         # We'll try to extract what we can.
         
+        # --- FIXED: use the same metric the LSTM was trained on ---
+        # Training used: E2 detector halting vehicle counts.
+        # `traci.lane.getLastStepHaltingNumber(lane_id)` == the number of stopped
+        # vehicles on a lane at this step, which is what the E2 detectors measured.
+        # We normalise by an assumed lane capacity of 20 vehicles so inputs stay
+        # in a reasonable [0, ~1] range consistent with the training distribution.
+        LANE_CAPACITY = 20.0
         current_flows = {}
-        lanes_data = snapshot.get("lanes", {})
-        for lid, info in lanes_data.items():
-            # info might have 'last_step_vehicle_number' or similar
-            # For now, let's use queue length as a proxy if flow missing? No, that's bad.
-            # Let's assume there's a flow field or we just pass 0.
-            # Ideally mpc_adapter SHOULD get reading from E2/E1.
-            # If snapshot is from SimulationController, it sends processed data.
-            # Let's assume induction_loop info.
-            current_flows[lid] = info.get("throughput", 0.0) * 3600.0 # Convert to veh/hour? Or just counts
-            # Predictor expects counts per step often.
+        for lid in self.all_lanes_ordered:
+            try:
+                halting = traci.lane.getLastStepHaltingNumber(lid)
+                current_flows[lid] = halting / LANE_CAPACITY   # normalised queue occupancy
+            except Exception:
+                current_flows[lid] = 0.0   # lane may not exist in this simulation
             
         if self.predictor:
             self.predictor.update_history(current_flows)
@@ -196,112 +205,115 @@ class MPCTrafficOptimizer:
         for tls_id, data in self.controllers.items():
             model = data["model"]
             plan = self.cycle_plans.get(tls_id)
-            
-            # --- State Machine ---
-            
+
+            # ── State Machine ───────────────────────────────────────────────
+            # Fix A: NO queue-triggered mid-cycle reoptimization.
+            # Previously Fix 5 discarded the plan on every poll once queues ≥5,
+            # causing phase starvation: the signal never left phase 0 because it
+            # kept restarting from scratch every 15 steps.
+            # Correct behaviour: execute the plan to completion, THEN re-optimize.
+
             # 1. Do we have an active plan?
             if plan:
-                # Check if plan is done
-                # Simple logic for now: We don't really track detailed timing here because 
-                # SimulationController manages yellow/transitions aggressively.
-                # Instead, we just check if we need to Generate a NEW plan (Cycle finished).
-                # BUT, SimulationController expects "Target Phase Index".
-                
-                # REFACTOR: The SimulationController calls us every X steps.
-                # If we return a phase, it tries to switch to it.
-                
-                # Better Logic:
-                # We calculate Green Splits: [G1, G2, G3, G4]
-                # We determine "Cycle Start Time".
-                # relative_time = now - cycle_start
-                # We see which bin relative_time falls into.
-                
                 elapsed = current_step - plan["start_time"]
                 cycle_duration = sum(plan["durations"])
-                
-                if elapsed >= cycle_duration:
-                    # Plan finished -> Re-optimize
-                    plan = None 
-                else:
-                    # Execute Plan
-                    target_phase = self._get_phase_from_plan(plan, elapsed)
-                    actions[tls_id] = target_phase
-            
-            # 2. If no plan (or just expired), Optimize
-            if not plan:
-                # Gather Queues (and Flow for Prediction)
-                queues = {}
-                current_flows = {} # For predictor history
-                lanes_data = snapshot.get("lanes", {})
-                
-                # Update Predictor History (Global) helps if we do it once per step, 
-                # but doing it here locally is fine if we are careful.
-                # Actually, predict() is called once per sim step (presumably).
-                # So we should update predictor ONCE at top of function.
-                pass 
 
+                if elapsed >= cycle_duration:
+                    # Plan finished → Re-optimize
+                    plan = None
+                else:
+                    # Fix C: Only emit an action when the plan says it is time
+                    # to switch to the NEXT phase.  Emitting on every 15-step
+                    # poll was resetting SUMO's internal phase timer even when
+                    # no switch was needed, violating minimum green times.
+                    target_phase = self._get_phase_from_plan(plan, elapsed)
+                    try:
+                        current_sumo_phase_idx = traci.trafficlight.getPhase(tls_id)
+                        logics = traci.trafficlight.getAllProgramLogics(tls_id)
+                        if logics:
+                            all_phases = logics[0].phases
+                            green_indices = [
+                                i for i, p in enumerate(all_phases)
+                                if 'g' in p.state.lower() and 'y' not in p.state.lower()
+                            ]
+                            # Map plan phase_index → SUMO green phase index
+                            if target_phase < len(green_indices):
+                                sumo_target = green_indices[target_phase]
+                            else:
+                                sumo_target = green_indices[-1]
+
+                            # Fix C: Only add to actions dict if SUMO currently
+                            # wants a different green phase (triggers a switch).
+                            if sumo_target != current_sumo_phase_idx:
+                                actions[tls_id] = target_phase
+                            # else: do nothing — SUMO is already on the right phase
+                    except Exception:
+                        # Safety fallback: emit action regardless
+                        actions[tls_id] = target_phase
+
+            # 2. If no plan (or just expired), Re-optimize
+            if not plan:
+                # ── Read queue lengths directly from TraCI ──────────────────
+                queues = {}
                 for lid in model.lane_ids:
-                    # Default if missing
-                    # Note: Queue length is in veh count
-                    q = 0
-                    if lid in lanes_data:
-                        q = lanes_data[lid].get("queue_length", 0)
-                    queues[lid] = q
-                
-                # Optimize
-                # Get Specific Demand for this intersection's lanes
-                # demand matrix shape: [n_local_lanes, N]
+                    try:
+                        queues[lid] = traci.lane.getLastStepHaltingNumber(lid)
+                    except Exception:
+                        queues[lid] = 0
+
+                # ── Build real [n_lanes, N] demand matrix from LSTM ──────────
                 local_demand = np.zeros((model.n_lanes, model.N))
-                
-                try:
-                    # Map global demand to local lanes
-                    for i, lid in enumerate(model.lane_ids):
-                        if lid in global_demand_map:
-                            # Slice prediction to match Control Horizon (model.N)
-                            # Prediction might be 20 steps, but Optimization only cares about next 5.
-                            full_pred = global_demand_map[lid]
-                            local_demand[i, :] = full_pred[:model.N]
+                for i, lid in enumerate(model.lane_ids):
+                    if lid in global_demand_map:
+                        full_pred = global_demand_map[lid]
+                        local_demand[i, :] = full_pred[:model.N]
+                    else:
+                        local_demand[i, :] = 0.25  # moderate fallback
+
+                # ── Per-lane saturation flow ─────────────────────────────────
+                sat_flows = {}
+                for lid in model.lane_ids:
+                    try:
+                        ll = lid.lower()
+                        if any(t in ll for t in ["left", "_l_", "turn", "lt"]):
+                            sat_flows[lid] = 0.35
+                        elif any(t in ll for t in ["right", "_r_", "rt"]):
+                            sat_flows[lid] = 0.40
                         else:
-                             # Fallback if lane not in predictor (shouldn't happen)
-                            local_demand[i, :] = 0.5 # moderate demand assumption
-                            
-                    green_times = model.optimize(queues, demand=local_demand, capacities={})
+                            sat_flows[lid] = 0.50
+                    except Exception:
+                        sat_flows[lid] = 0.50
+
+                try:
+                    green_times = model.optimize(
+                        queues,
+                        demand=local_demand,
+                        capacities={},
+                        sat_flows=sat_flows,
+                    )
                 except Exception as e:
                     print(f"MPC Optimization failed for {tls_id}: {e}")
-                    green_times = [15.0] * model.Phases
-                
-                # Create Plan
-                # Note: green_times is length of Phases.
-                # We assume strict ordering 0, 1, 2... for now.
-                # IMPORTANT: MPC optimizes Green times. It assumes fixed yellow times in between.
-                # The model constraints accounted for Lost Time.
-                
-                # Logic: Phase 0 (Green) -> Phase 1 (Yellow) -> Phase 2 (Green)... 
-                # Wait, generic SUMO phases are messy (G, y, r, G, y...).
-                # Simplified Assumption: The MPC 'Phases' correspond to the indices we identified as 'Greens'.
-                # But MPC logic assumes continuous cycle.
-                
-                # Fallback: Just return the index of the phase with highest recommended time? 
-                # No, that defeats the purpose of splits.
-                
-                # Let's map strict implementation:
-                # The generic MPC returns [g0, g1, g2, g3] where indices match `lane_phase_indices`.
-                
-                # We construct a time-schedule.
-                actual_durations = []
-                for idx, g in enumerate(green_times):
-                    actual_durations.append(g)
-                    
-                self.cycle_plans[tls_id] = {
+                    available = model.CycleTime - model.cfg.yellow_time * model.Phases
+                    green_times = [available / model.Phases] * model.Phases
+
+                new_plan = {
                     "start_time": current_step,
-                    "durations": actual_durations, # List of floats
-                    "phases": list(range(len(green_times))) # Simple 0,1,2,3 assumption
+                    "durations": list(green_times),
+                    "phases": list(range(len(green_times)))
                 }
-                
-                # Execute immediate first step
-                actions[tls_id] = 0 # Start with Phase 0
-                
+                self.cycle_plans[tls_id] = new_plan
+
+                # Diagnostics — only printed on reoptimization
+                max_q = max(queues.values()) if queues else 0
+                gt_str = ", ".join(f"{g:.1f}s" for g in green_times)
+                print(f"🚦 MPC[{tls_id}] Step:{int(current_step)} MaxQ:{max_q}veh → [{gt_str}]")
+
+                # Fix C: Start phase 0 of the new plan immediately
+                # (first phase always needs an explicit switch)
+                actions[tls_id] = 0
+
         return actions
+
 
     def _get_phase_from_plan(self, plan, elapsed):
         cumulative = 0

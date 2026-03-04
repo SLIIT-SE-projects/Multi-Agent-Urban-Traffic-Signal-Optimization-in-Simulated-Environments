@@ -2,13 +2,14 @@ import os
 import glob
 import traci
 
+_BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
 class ScenarioController:
     """
     Manages scenario operations including listing, switching, and reloading scenarios.
     """
     
-    SCENARIOS_DIR = os.path.join("..", "scenarios")
+    SCENARIOS_DIR = os.path.normpath(os.path.join(_BASE_DIR, "..", "..", "scenarios"))
     
     def __init__(self, simulation_controller):
         """
@@ -86,8 +87,10 @@ class ScenarioController:
             
             config_file = cfg_files[0]
             
+            was_running = self.sim_controller.is_running
+
             # Stop current simulation if running
-            if self.sim_controller.is_running:
+            if was_running:
                 stop_result = self.sim_controller.stop()
                 if stop_result.get("status") == "error":
                     return {
@@ -95,23 +98,24 @@ class ScenarioController:
                         "message": f"Failed to stop current simulation: {stop_result.get('message')}"
                     }
             
-            # Update the config file and start new scenario
+            # Update the config file
             self.sim_controller.config_file = config_file
             self.sim_controller.current_step = 0
             
-            # Start the new scenario
-            result = self.sim_controller.start()
-            
-            if result.get("status") == "success":
-                return {
-                    "status": "success",
-                    "message": f"Successfully switched to scenario '{scenario_name}'",
-                    "scenario": scenario_name,
-                    "config_file": config_file,
-                    "step": 0
-                }
-            else:
-                return result
+            if was_running:
+                # Restart with the new scenario
+                result = self.sim_controller.start()
+                if result.get("status") != "success":
+                    return result
+
+            return {
+                "status": "success",
+                "message": f"Successfully switched to scenario '{scenario_name}'",
+                "scenario": scenario_name,
+                "config_file": config_file,
+                "step": 0,
+                "restarted": was_running
+            }
         
         except Exception as e:
             return {
@@ -173,14 +177,8 @@ class ScenarioController:
             dict: Current scenario information
         """
         try:
-            if not self.sim_controller.is_running:
-                return {
-                    "status": "error",
-                    "message": "No simulation running"
-                }
-            
             config_file = self.sim_controller.config_file
-            scenario_name = os.path.basename(os.path.dirname(config_file))
+            scenario_name = os.path.basename(os.path.dirname(config_file)) if config_file else None
             
             return {
                 "status": "success",

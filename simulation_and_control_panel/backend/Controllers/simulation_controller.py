@@ -37,6 +37,10 @@ class SimulationController:
         self.pending_switches = {}
         self.yellow_timers = {}
         self.YELLOW_DURATION = 3
+        # Dynamic flow-rate injection state
+        self.flow_rates: dict = {}          # route_id -> vehicles_per_hour
+        self._flow_last_injections: dict = {}  # route_id -> last sim-time (s)
+        self._flow_vehicle_counter: int = 0
 
     def _get_net_file_from_config(self):
         """
@@ -297,7 +301,10 @@ class SimulationController:
 
         self.current_step += 1
 
-        # 3.5. GREEN WAVE LOGIC
+        # 3.5. DYNAMIC FLOW INJECTION
+        self._inject_flow_vehicles()
+
+        # 3.6. GREEN WAVE LOGIC
         if self.green_wave_controller:
             self.green_wave_controller.execute_step()
 
@@ -375,7 +382,11 @@ class SimulationController:
         for lane in lane_ids:
             lanes[lane] = {
                 "queue_length": traci.lane.getLastStepHaltingNumber(lane),
+                "vehicle_count": traci.lane.getLastStepVehicleNumber(lane),
                 "occupancy": traci.lane.getLastStepOccupancy(lane),
+                # NOTE: SUMO returns the free-flow speed limit (not 0) when a
+                # lane is empty.  Consumers must filter by vehicle_count > 0
+                # before averaging this value.
                 "avg_speed": traci.lane.getLastStepMeanSpeed(lane),
                 "co2": traci.lane.getCO2Emission(lane),
                 "waiting_time": traci.lane.getWaitingTime(lane)
@@ -467,17 +478,36 @@ class SimulationController:
         self.is_paused = False
         return {"status": "success", "message": "Auto-stepping resumed", "step": self.current_step}
 
-    def start(self):
-        """Start the simulation"""
+    def start(self, suppress_demand: bool = False):
+        """Start the simulation.
+
+        Args:
+            suppress_demand: When True, passes ``--scale 0`` to SUMO so that no
+                pre-defined vehicles from the route/trip files are inserted.  Use
+                this when you want vehicle flow to be driven exclusively by the
+                dynamic flow-rate injection API.
+        """
         if self.stopping:
             return {"status": "error", "message": "Simulation is still shutting down, please wait a moment"}
 
         if self.is_running:
             return {"status": "error", "message": "Simulation already running"}
-            
+
+        # Reset dynamic flow state so stale rates from a previous run don't
+        # carry over into the new session.
+        self.flow_rates.clear()
+        self._flow_last_injections.clear()
+        self._flow_vehicle_counter = 0
+
         # Choose SUMO binary based on use_gui setting
         sumo_binary = "sumo-gui" if self.use_gui else "sumo"
         sumo_cmd = [sumo_binary, "-c", self.config_file, "--start"]
+
+        if suppress_demand:
+            # Scale the built-in demand to zero — none of the vehicles defined
+            # in the scenario's route/trip files will be inserted by SUMO.
+            sumo_cmd += ["--scale", "0"]
+            print("[FlowRate] Built-in demand suppressed (--scale 0). Only injected vehicles will run.")
         
         try:
             traci.start(sumo_cmd)
@@ -491,9 +521,19 @@ class SimulationController:
                 "status": "success", 
                 "message": "Simulation started", 
                 "step": self.current_step,
-                "auto_stepping": self.auto_stepping
+                "auto_stepping": self.auto_stepping,
+                "suppress_demand": suppress_demand,
             }
         except Exception as e:
+            # traci.start() may have partially opened a connection/process before
+            # failing (e.g. SUMO config error). Clean it up so the next Start call
+            # doesn't stack another SUMO process on top.
+            try:
+                traci.close()
+            except Exception:
+                pass
+            self.is_running = False
+            self.stopping = False
             return {"status": "error", "message": str(e)}
     
     def step(self):
@@ -590,6 +630,124 @@ class SimulationController:
             except Exception as e:
                 print(f"❌ Error applying action to {tls_id}: {e}")
 
+    # -----------------------------------------------------------------------
+    # DYNAMIC FLOW RATE CONTROL
+    # -----------------------------------------------------------------------
+
+    def set_flow_rate(self, route_id: str, vehicles_per_hour: float) -> dict:
+        """Adjust vehicle insertion rate on *route_id* at runtime via TraCI.
+
+        Args:
+            route_id: A route ID that must already exist in the SUMO network.
+            vehicles_per_hour: Desired arrival rate (0 disables injection).
+
+        Returns:
+            A result dict with ``status`` and ``message``.
+        """
+        if not self.is_running:
+            return {"status": "error", "message": "Simulation is not running"}
+
+        try:
+            known_routes = traci.route.getIDList()
+        except Exception as e:
+            return {"status": "error", "message": f"TraCI error: {e}"}
+
+        if route_id not in known_routes:
+            return {
+                "status": "error",
+                "message": f"Route '{route_id}' not found. Available: {list(known_routes)}",
+            }
+
+        if vehicles_per_hour < 0:
+            return {"status": "error", "message": "vehicles_per_hour must be >= 0"}
+
+        self.flow_rates[route_id] = float(vehicles_per_hour)
+        # Reset injection timer so the new rate takes effect immediately
+        try:
+            self._flow_last_injections[route_id] = traci.simulation.getTime()
+        except Exception:
+            self._flow_last_injections[route_id] = 0.0
+
+        print(f"[FlowRate] route='{route_id}' rate={vehicles_per_hour} veh/h")
+        return {
+            "status": "success",
+            "message": f"Flow rate for '{route_id}' set to {vehicles_per_hour} veh/h",
+            "route_id": route_id,
+            "vehicles_per_hour": vehicles_per_hour,
+        }
+
+    def set_global_flow_rate(self, vehicles_per_hour: float) -> dict:
+        """Apply *vehicles_per_hour* to every route currently in the simulation.
+
+        Args:
+            vehicles_per_hour: Desired arrival rate shared across all routes
+                               (0 disables injection on all routes).
+
+        Returns:
+            A result dict with ``status``, ``message``, and ``route_count``.
+        """
+        if not self.is_running:
+            return {"status": "error", "message": "Simulation is not running"}
+
+        if vehicles_per_hour < 0:
+            return {"status": "error", "message": "vehicles_per_hour must be >= 0"}
+
+        try:
+            known_routes = list(traci.route.getIDList())
+            current_time = traci.simulation.getTime()
+        except Exception as e:
+            return {"status": "error", "message": f"TraCI error: {e}"}
+
+        for route_id in known_routes:
+            self.flow_rates[route_id] = float(vehicles_per_hour)
+            self._flow_last_injections[route_id] = current_time
+
+        print(f"[FlowRate] global rate={vehicles_per_hour} veh/h applied to {len(known_routes)} routes")
+        return {
+            "status": "success",
+            "message": f"Global flow rate set to {vehicles_per_hour} veh/h across {len(known_routes)} routes",
+            "vehicles_per_hour": vehicles_per_hour,
+            "route_count": len(known_routes),
+        }
+
+    def get_routes(self) -> dict:
+        """Return all route IDs currently loaded in SUMO via TraCI."""
+        if not self.is_running:
+            return {"status": "error", "message": "Simulation is not running"}
+
+        try:
+            route_ids = list(traci.route.getIDList())
+            return {"status": "success", "routes": route_ids}
+        except Exception as e:
+            return {"status": "error", "message": f"TraCI error: {e}"}
+
+    def _inject_flow_vehicles(self):
+        """Called every simulation step to insert vehicles according to ``flow_rates``."""
+        if not self.flow_rates:
+            return
+
+        try:
+            current_time = traci.simulation.getTime()
+        except Exception:
+            return
+
+        for route_id, rate in list(self.flow_rates.items()):
+            if rate <= 0:
+                continue
+
+            period = 3600.0 / rate  # seconds between insertions
+            last = self._flow_last_injections.get(route_id, current_time - period)
+
+            if (current_time - last) >= period:
+                self._flow_vehicle_counter += 1
+                veh_id = f"flow_{route_id}_{self._flow_vehicle_counter}"
+                try:
+                    traci.vehicle.add(vehID=veh_id, routeID=route_id)
+                    self._flow_last_injections[route_id] = current_time
+                except traci.exceptions.TraCIException as exc:
+                    # Vehicle may already exist or route is invalid — skip silently
+                    print(f"[FlowRate] Could not add vehicle '{veh_id}': {exc}")
+
     def unload_optimizer(self):
         """Disable the currently loaded optimizer"""
         self.optimizer = None
@@ -643,6 +801,10 @@ class SimulationController:
                 # traci.close() blocks until SUMO fully exits — safe to do here in background
                 traci.close()
                 self.current_step = 0
+                # Clear dynamic flow state so old rates don't persist after restart
+                self.flow_rates.clear()
+                self._flow_last_injections.clear()
+                self._flow_vehicle_counter = 0
                 print("Simulation stopped (teardown complete)")
             except Exception as e:
                 print(f"Error during simulation teardown: {e}")
