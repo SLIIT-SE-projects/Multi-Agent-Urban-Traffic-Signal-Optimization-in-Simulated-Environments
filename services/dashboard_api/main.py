@@ -110,6 +110,24 @@ async def get_network_graph():
         print(f"Error proxying network graph: {e}")
         return {"error": str(e)}
 
+# 6.5 MODEL CONTROL ENDPOINTS
+SIM_URL = os.getenv('SIM_MANAGER_URL', 'http://simulation-manager:5000')
+
+@app.post('/api/optimizer/load')
+async def proxy_load_optimizer(body: dict):
+    r = requests.post(f'{SIM_URL}/api/optimizer/load', json=body)
+    return r.json()
+
+@app.post('/api/optimizer/load-external')
+async def proxy_load_external(body: dict):
+    r = requests.post(f'{SIM_URL}/api/optimizer/load-external', json=body)
+    return r.json()
+
+@app.get('/api/optimizer/status')
+async def proxy_optimizer_status():
+    r = requests.get(f'{SIM_URL}/api/optimizer/status')
+    return r.json()
+
 # 7. WEBSOCKET ENDPOINT
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
@@ -117,7 +135,13 @@ async def websocket_endpoint(websocket: WebSocket):
     pubsub = redis_client.pubsub()
     
     # Subscribe to data channels from GNN/MPC services
-    await pubsub.subscribe("gnn_metrics", "mpc_metrics", "simulation_status")
+    await pubsub.subscribe(
+        'gnn_metrics',
+        'mpc_metrics',
+        'simulation_status',
+        'model_performance',   # New channel
+        'model_status',        # New channel
+    )
 
     try:
         async for message in pubsub.listen():

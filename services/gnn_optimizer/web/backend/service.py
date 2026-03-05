@@ -153,7 +153,8 @@ class RemoteOptimizationService:
             'total_co2': total_co2,
             'total_waiting_time': total_waiting,
             'throughput': throughput,
-            'intersections': raw_data.get('intersections', {})
+            'intersections': raw_data.get('intersections', {}),
+            'model_meta': raw_data.get('model_meta', {}),
         }
 
         # Record if in baseline mode
@@ -162,3 +163,11 @@ class RemoteOptimizationService:
 
         # Emit to GNN Frontend
         self.server_socketio.emit('traffic_update', metrics)
+        
+        if raw_data.get('model_meta', {}).get('active'):
+            self.server_socketio.r.publish('model_performance', json.dumps({
+                'step': metrics['step'],
+                'uncertainty': raw_data['model_meta'].get('uncertainty'),
+                'model_name': raw_data['model_meta'].get('model_name'),
+                'inference_ms': raw_data['model_meta'].get('last_inference_ms'),
+            }))

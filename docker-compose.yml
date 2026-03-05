@@ -1,7 +1,56 @@
-# root/docker-compose.yml
 version: '3.8'
 services:
+
   redis:
-    image: redis:alpine
-    ports:
-      - "6379:6379"
+    image: redis:7-alpine
+    ports: [ '6379:6379' ]
+    healthcheck:
+      test: [ 'CMD', 'redis-cli', 'ping' ]
+      interval: 5s
+
+  gnn-model-service:
+    build: ./services/gnn_model_service
+    ports: [ '8001:8001' ]
+    volumes:
+      - ./model_weights:/app/weights
+      - ./services/gnn_optimizer:/app/src/gnn_optimizer # Mount source for model definitions
+      - ./simulation_and_control_panel/scenarios:/app/scenarios
+    environment:
+      - MODEL_PATH=/app/weights/final_marl_model_best.pth
+      - NET_FILE_PATH=/app/weights/network.net.xml
+    healthcheck:
+      test: [ 'CMD', 'curl', '-f', 'http://localhost:8001/health' ]
+      interval: 10s
+
+  simulation-manager:
+    build: ./simulation_and_control_panel
+    ports: [ '5000:5000' ]
+    volumes:
+      - ./simulation_and_control_panel/scenarios:/app/scenarios
+    environment:
+      - GNN_MODEL_URL=http://gnn-model-service:8001
+      - USE_GUI=false
+    depends_on:
+      redis:
+        condition: service_healthy
+      gnn-model-service:
+        condition: service_healthy
+
+  gnn-worker:
+    build: ./services/gnn_optimizer
+    environment:
+      - REDIS_HOST=redis
+      - MANAGER_API=http://simulation-manager:5000/api
+      - MANAGER_WS=http://simulation-manager:5000
+    depends_on:
+      - redis
+      - simulation-manager
+
+  dashboard-api:
+    build: ./services/dashboard_api
+    ports: [ '8000:8000' ]
+    environment:
+      - REDIS_HOST=redis
+      - SIM_MANAGER_URL=http://simulation-manager:5000
+    depends_on:
+      - redis

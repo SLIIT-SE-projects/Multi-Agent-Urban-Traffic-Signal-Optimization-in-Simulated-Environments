@@ -1,4 +1,7 @@
-flask==3.0.0
-flask-cors==4.0.0
-flask-socketio==5.3.6
-eventlet==0.33.3
+flask
+flask-socketio
+flask-cors
+flask-sock
+requests
+sumolib
+redis

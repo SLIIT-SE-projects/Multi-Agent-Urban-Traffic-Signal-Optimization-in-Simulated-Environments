@@ -10,5 +10,5 @@ class Config:
     HOST = os.getenv('HOST', '0.0.0.0')
     
     # Manager Service (Simulation)
-    MANAGER_API = os.getenv('MANAGER_API', 'http://localhost:5000/api')
-    MANAGER_WS = os.getenv('MANAGER_WS', 'http://localhost:5000')
+    MANAGER_API = os.getenv('MANAGER_API', 'http://simulation-manager:5000/api')
+    MANAGER_WS = os.getenv('MANAGER_WS', 'http://simulation-manager:5000')

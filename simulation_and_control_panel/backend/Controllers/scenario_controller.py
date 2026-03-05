@@ -108,6 +108,10 @@ class ScenarioController:
                 if result.get("status") != "success":
                     return result
 
+            # Trigger the optimizer graph rebuild now that the new map is loaded
+            if hasattr(self, 'sim_controller') and self.sim_controller:
+                self.sim_controller.notify_scenario_changed()
+
             return {
                 "status": "success",
                 "message": f"Successfully switched to scenario '{scenario_name}'",

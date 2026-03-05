@@ -22,7 +22,7 @@ current_dir = os.path.dirname(os.path.abspath(__file__))
 load_env(os.path.join(current_dir, '.env'))
 
 class Config:
-    REDIS_HOST = os.getenv('REDIS_HOST', 'localhost')
+    REDIS_HOST = os.getenv('REDIS_HOST', 'redis')
     REDIS_PORT = int(os.getenv('REDIS_PORT', 6379))
     DASHBOARD_CORS_ORIGIN = os.getenv('DASHBOARD_CORS_ORIGIN', 'http://localhost:5173')
     BACKEND_PATH = os.getenv('BACKEND_PATH', 'gnn_optimizer/web/backend')

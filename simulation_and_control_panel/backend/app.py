@@ -270,6 +270,28 @@ def load_optimizer():
     sim_controller.load_optimizer(type)
     return jsonify({"status": "success", "message": f"{type} optimizer loaded"})
 
+@app.route('/api/optimizer/load-external', methods=['POST'])
+def load_external_model():
+    data = request.json
+    url = data.get('url')
+    if not url:
+        return jsonify({'status': 'error', 'message': 'url is required'}), 400
+    result = sim_controller.load_optimizer(url)
+    return jsonify(result)
+
+@app.route('/api/optimizer/status', methods=['GET'])
+def get_optimizer_status():
+    if not sim_controller.optimization_enabled or not sim_controller.optimizer:
+        return jsonify({'active': False, 'model': None})
+    opt = sim_controller.optimizer
+    return jsonify({
+        'active': True,
+        'model_name': getattr(opt, 'model_name', 'unknown'),
+        'model_url': getattr(opt, 'model_url', None),
+        'last_uncertainty': getattr(opt, 'last_uncertainty', None),
+        'last_inference_ms': getattr(opt, 'last_inference_ms', None),
+    })
+
 @app.route('/api/optimizer/toggle', methods=['POST'])
 def toggle_optimizer():
     # Enable/Disable logic in controller

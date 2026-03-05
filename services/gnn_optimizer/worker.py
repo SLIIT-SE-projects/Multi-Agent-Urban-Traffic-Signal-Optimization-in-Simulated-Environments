@@ -6,17 +6,9 @@ import redis.asyncio as redis
 import redis as redis_sync
 
 # 1. PATH SETUP
-current_dir = os.path.dirname(os.path.abspath(__file__))
-services_dir = os.path.dirname(current_dir)
-
-# Add parent directory to path to import config
-sys.path.append(services_dir)
 from config import Config
-
-backend_path = os.path.join(services_dir, Config.BACKEND_PATH)
-sys.path.append(backend_path)
-
 from service import RemoteOptimizationService
+import requests as requests_sync
 
 # 2. ADAPTER CLASS
 class RedisSocketAdapter:
@@ -80,6 +72,14 @@ async def run_gnn_cycle():
                 print(" Stopping Baseline Recording...")
                 result = service.stop_baseline_recording()
                 print(f" Service Response: {result}")
+
+            elif command == 'get_model_status':
+                try:
+                    r = requests_sync.get(f'{Config.MANAGER_API}/optimizer/status')
+                    status = r.json()
+                    redis_adapter.r.publish('model_status', json.dumps(status))
+                except Exception as e:
+                    print(f'Status fetch error: {e}')
 
 if __name__ == "__main__":
     try:

@@ -4,8 +4,8 @@ import traci
 import threading
 import time
 import xml.etree.ElementTree as ET
-from optimizers.gnn_adapter import GNNTrafficOptimizer
-from optimizers.mpc_adapter import MPCTrafficOptimizer
+from optimizers.model_router import ModelRouter
+from optimizers.mpc_adapter import MPCTrafficOptimizer   # Keep only if MPC currently runs in-process
 
 # Add SUMO tools to path
 if 'SUMO_HOME' in os.environ:
@@ -233,41 +233,36 @@ class SimulationController:
             next_phase = (next_phase + 1) % total_phases
         return next_phase
 
-    def load_optimizer(self, model_type="gnn"):
-        """Load the AI model with the CURRENT simulation map"""
-        print(f"🔌 Loading {model_type.upper()} Optimizer...")
-        
-        # 1. Dynamically find the map file
+    def load_optimizer(self, model_type='gnn'):
+        import os
         current_net_file = self._get_net_file_from_config()
-        
         if not current_net_file:
-            print("❌ Cannot load Optimizer: Network file could not be determined from config.")
-            return {"status": "error", "message": "Network file not found"}
-
+            return {'status': 'error', 'message': 'Network file not found'}
         try:
-            if model_type == "gnn":
-                # 2. Inject the map file into the GNN Adapter
-                self.optimizer = GNNTrafficOptimizer(
-                    net_path=current_net_file
-                )
-                self.optimization_enabled = True
-                print(f"✅ GNN Optimizer attached to: {os.path.basename(current_net_file)}")
-                return {"status": "success", "message": "GNN Optimizer Loaded"}
-            
-            elif model_type == "mpc":
-                # 3. Inject MPC Optimizer
-                self.optimizer = MPCTrafficOptimizer(
-                    net_path=current_net_file
-                )
-                self.optimization_enabled = True
-                print(f"✅ MPC Optimizer attached to: {os.path.basename(current_net_file)}")
-                return {"status": "success", "message": "MPC Optimizer Loaded"}
+            model_urls = {
+                'gnn': os.getenv('GNN_MODEL_URL', 'http://gnn-model-service:8001'),
+                'mpc': os.getenv('MPC_MODEL_URL', 'http://mpc-model-service:8002'),
+            }
+            if model_type in model_urls:
+                url = model_urls[model_type]
+            elif model_type.startswith('http'):
+                url = model_type   # External researcher URL passed directly
+            else:
+                return {'status': 'error', 'message': f'Unknown model: {model_type}'}
                 
+            self.optimizer = ModelRouter(url, net_file=current_net_file)
+            self.optimization_enabled = True
+            print(f'Model loaded from: {url}')
+            return {'status': 'success', 'message': f'{model_type} optimizer loaded'}
         except Exception as e:
-            print(f"❌ Failed to load optimizer: {e}")
-            import traceback
-            traceback.print_exc()
-            return {"status": "error", "message": str(e)}
+            return {'status': 'error', 'message': str(e)}
+
+    def notify_scenario_changed(self):
+        """Call this after every scenario switch if an optimizer is loaded."""
+        if getattr(self, 'optimization_enabled', False) and getattr(self, 'optimizer', None):
+            new_net_file = self._get_net_file_from_config()
+            if new_net_file and hasattr(self.optimizer, 'reinitialize'):
+                self.optimizer.reinitialize(new_net_file)
 
     # =========================================================================
     # CORE SIMULATION LOGIC (Refactored)
@@ -373,8 +368,11 @@ class SimulationController:
                     'step': self.current_step,
                     'lanes': snapshot['lanes'],
                     'intersections': snapshot['intersections'],
-                    'global': {
-                        'arrived_vehicles': arrived_vehicles
+                    'global': {'arrived_vehicles': arrived_vehicles},
+                    'model_meta': {
+                        'uncertainty': getattr(self.optimizer, 'last_uncertainty', None),
+                        'model_name': getattr(self.optimizer, 'model_name', None),
+                        'active': self.optimization_enabled
                     }
                 })
             except Exception as e:
