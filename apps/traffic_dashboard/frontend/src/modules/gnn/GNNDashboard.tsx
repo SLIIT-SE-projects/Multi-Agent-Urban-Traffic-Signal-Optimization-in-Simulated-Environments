@@ -66,7 +66,7 @@ export default function GNNDashboard() {
 
       <div className={`flex-1 pr-2 scrollbar-thin scrollbar-thumb-slate-800 scrollbar-track-transparent ${activeSubTab === 'graph' ? 'overflow-hidden' : 'overflow-y-auto'}`}>
         {activeSubTab === 'monitor' && <GnnMonitorTab socketData={socketData} isRunning={isRunning} />}
-        {activeSubTab === 'graph' && <GnnGraphTab />}
+        {activeSubTab === 'graph' && <GnnGraphTab socketData={socketData} />}
         {activeSubTab === 'config' && <GnnConfigTab />}
         {activeSubTab === 'logs' && (
           <div className="text-slate-500 flex flex-col items-center justify-center h-64 border-2 border-dashed border-slate-800 rounded-xl bg-slate-900/50">
