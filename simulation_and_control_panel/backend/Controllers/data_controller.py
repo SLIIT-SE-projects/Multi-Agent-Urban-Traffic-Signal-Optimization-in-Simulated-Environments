@@ -72,7 +72,8 @@ class DataController:
                     # NEW: Accurate Lane-based Queue Metrics
                     "avg_queue_length": sum([traci.lane.getLastStepHaltingNumber(lane) for lane in traci.lane.getIDList()]) / len(traci.lane.getIDList()) if traci.lane.getIDList() else 0,
                     "total_queue_length": sum([traci.lane.getLastStepHaltingNumber(lane) for lane in traci.lane.getIDList()])
-                }
+                },
+                "use_evps": self.sim_controller.use_evps
             }
         except Exception as e:
             return {"status": "error", "message": str(e)}
@@ -89,7 +90,8 @@ class DataController:
             "is_paused": self.sim_controller.is_paused,
             "current_step": self.sim_controller.current_step,
             "auto_stepping": self.sim_controller.auto_stepping,
-            "stopping": self.sim_controller.stopping
+            "stopping": self.sim_controller.stopping,
+            "use_evps": self.sim_controller.use_evps
         }
     
     def get_vehicle_count(self):

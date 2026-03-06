@@ -53,6 +53,13 @@ async def send_command(cmd: Command):
     await redis_client.publish(f"control_{cmd.model}", cmd.action)
     return {"status": "command_sent", "details": cmd}
 
+@app.post("/api/control/evps/start")
+async def start_evps():
+    print("DEBUG: Sending command: start to channel: control_evps")
+    receivers = await redis_client.publish("control_evps", "start")
+    print(f"DEBUG: Command published. Receivers: {receivers}")
+    return {"status": "command_sent", "action": "start", "receivers": receivers}
+
 # 6. BASELINE PROXY ENDPOINTS
 @app.post("/api/baseline/record")
 async def proxy_record_baseline():
@@ -116,8 +123,8 @@ async def websocket_endpoint(websocket: WebSocket):
     await websocket.accept()
     pubsub = redis_client.pubsub()
     
-    # Subscribe to data channels from GNN/MPC services
-    await pubsub.subscribe("gnn_metrics", "mpc_metrics", "simulation_status")
+    # Subscribe to data channels from GNN/MPC/EVPS services
+    await pubsub.subscribe("gnn_metrics", "mpc_metrics", "simulation_status", "evps_metrics")
 
     try:
         async for message in pubsub.listen():

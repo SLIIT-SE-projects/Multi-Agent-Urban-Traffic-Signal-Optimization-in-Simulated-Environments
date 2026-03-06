@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar } from 'recharts';
-import { Activity, Car, Zap, Clock, BarChart3, TrendingUp } from 'lucide-react';
+import { Activity, Car, Zap, Clock, BarChart3, TrendingUp, ShieldAlert, Play } from 'lucide-react';
+import { WS_BASE_URL } from '../../config';
 
 // Reusing the same API base
 const BASE_URL = '/api';
@@ -9,6 +10,11 @@ export default function SystemOverview() {
     const [status, setStatus] = useState<any>(null);
     const [dataHistory, setDataHistory] = useState<any[]>([]);
     const [isConnected, setIsConnected] = useState(false);
+
+
+    // --- EVPS State ---
+    const [evpsMetrics, setEvpsMetrics] = useState<any>(null);
+    const [evpsWsConnected, setEvpsWsConnected] = useState(false);
 
     useEffect(() => {
         const interval = setInterval(async () => {
@@ -43,8 +49,128 @@ export default function SystemOverview() {
                 setIsConnected(false);
             }
         }, 1000);
-        return () => clearInterval(interval);
+
+        // --- EVPS WebSocket Connection ---
+        const ws = new WebSocket(WS_BASE_URL);
+        ws.onopen = () => setEvpsWsConnected(true);
+        ws.onclose = () => setEvpsWsConnected(false);
+        ws.onmessage = (event) => {
+            try {
+                const response = JSON.parse(event.data);
+                if (response.channel === 'evps_metrics') {
+                    setEvpsMetrics(response.data);
+                }
+            } catch (err) {
+                console.error("Error parsing EVPS WS message", err);
+            }
+        };
+
+        return () => {
+            clearInterval(interval);
+            ws.close();
+        };
     }, []);
+
+    const handleStartEVPS = async () => {
+        try {
+            console.log("handleStartEVPS clicked! status:", status);
+            // TraCI strictly requires num-clients at boot. 
+            // If the simulation is running without EVPS, we must restart it.
+            // Note: /api/simulation/data returns {status: 'success'} when properly running
+            if (status?.status === 'success') {
+                console.log("Stopping current simulation...");
+                await fetch(`${BASE_URL}/simulation/stop`, { method: 'POST' });
+
+                // Poll the backend until the background teardown thread finishes
+                console.log("Waiting for SUMO to cleanly exit...");
+                let stopped = false;
+                for (let i = 0; i < 15; i++) {
+                    await new Promise(resolve => setTimeout(resolve, 500));
+                    const res = await fetch(`${BASE_URL}/simulation/status`);
+                    const currentStatus = await res.json();
+
+                    // The backend sets 'is_running' to false immediately, but keeps 'stopping'
+                    // as true while the background thread handles the blocking traci.close() call.
+                    if (currentStatus.stopping === false) {
+                        stopped = true;
+                        break;
+                    }
+                }
+                if (!stopped) {
+                    console.warn("SUMO took too long to stop. Attempting EVPS boot anyway...");
+                }
+            }
+
+            console.log("Booting simulation with use_evps: true...");
+            // Re-boot the Core Simulation in EVPS mode (2 clients)
+            // The Flask API will also publish the 'start' command to Redis!
+            const startRes = await fetch(`${BASE_URL}/simulation/start`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ use_evps: true })
+            });
+            const startData = await startRes.json();
+            console.log("Start Response:", startData);
+
+            if (startData.status === "success") {
+                console.log("Starting auto-stepping...");
+                // Start stepping automatically so the user immediately sees action
+                await fetch(`${BASE_URL}/simulation/auto-step/start`, { method: 'POST' });
+                console.log("EVPS Start Sequence Completed.");
+            } else {
+                console.error("Simulation failed to start in EVPS mode", startData);
+            }
+
+        } catch (e) {
+            console.error("Failed to start EVPS sequence", e);
+        }
+    };
+
+    const handleStopEVPS = async () => {
+        try {
+            console.log("handleStopEVPS clicked!");
+            if (status?.status === 'success') {
+                console.log("Stopping EVPS simulation...");
+                await fetch(`${BASE_URL}/simulation/stop`, { method: 'POST' });
+
+                // Poll the backend until the background teardown thread finishes
+                console.log("Waiting for SUMO to cleanly exit...");
+                let stopped = false;
+                for (let i = 0; i < 15; i++) {
+                    await new Promise(resolve => setTimeout(resolve, 500));
+                    const res = await fetch(`${BASE_URL}/simulation/status`);
+                    const currentStatus = await res.json();
+
+                    if (currentStatus.stopping === false) {
+                        stopped = true;
+                        break;
+                    }
+                }
+                if (!stopped) {
+                    console.warn("SUMO took too long to stop. Attempting normal boot anyway...");
+                }
+            }
+
+            console.log("Booting simulation with use_evps: false...");
+            const startRes = await fetch(`${BASE_URL}/simulation/start`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ use_evps: false })
+            });
+            const startData = await startRes.json();
+
+            if (startData.status === "success") {
+                console.log("Starting auto-stepping...");
+                await fetch(`${BASE_URL}/simulation/auto-step/start`, { method: 'POST' });
+                console.log("Normal Start Sequence Completed.");
+            } else {
+                console.error("Simulation failed to start in normal mode", startData);
+            }
+
+        } catch (e) {
+            console.error("Failed to stop EVPS sequence", e);
+        }
+    };
 
     // Metric Component Helper
     const StatCard = ({ title, value, unit, icon, color, subtext }: any) => (
@@ -85,6 +211,47 @@ export default function SystemOverview() {
                         STEP: <span className="text-white font-bold">{status?.step || 0}</span>
                     </span>
                 </div>
+            </div>
+
+            {/* EVPS Card */}
+            <div className="bg-slate-900 border border-indigo-900/50 rounded-xl p-5 flex items-center justify-between shadow-lg shadow-indigo-900/10">
+                <div className="flex items-center gap-4">
+                    <div className="p-3 rounded-xl bg-indigo-500/20">
+                        <ShieldAlert className="w-6 h-6 text-indigo-400" />
+                    </div>
+                    <div>
+                        <h3 className="text-white font-semibold">Emergency Vehicle Preemption (EVPS)</h3>
+                        <div className="flex items-center gap-4 mt-1 text-sm text-slate-400">
+                            <span className="flex items-center gap-1">
+                                <span className={`w-2 h-2 rounded-full ${evpsWsConnected ? 'bg-emerald-500' : 'bg-rose-500'}`} />
+                                Server: {evpsWsConnected ? 'Connected' : 'Disconnected'}
+                            </span>
+                            {evpsMetrics && (
+                                <>
+                                    <span>•</span>
+                                    <span>Active EVs: <strong className="text-white">{evpsMetrics.total_active_evs || 0}</strong></span>
+                                    <span>•</span>
+                                    <span>Green Waves: <strong className="text-indigo-400">{evpsMetrics.green_waves_active || 0}</strong></span>
+                                </>
+                            )}
+                        </div>
+                    </div>
+                </div>
+                {status?.use_evps ? (
+                    <button
+                        onClick={handleStopEVPS}
+                        className="bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded-lg text-sm font-semibold transition"
+                    >
+                        Stop EVPS
+                    </button>
+                ) : (
+                    <button
+                        onClick={handleStartEVPS}
+                        className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg text-sm font-semibold transition"
+                    >
+                        Start EVPS
+                    </button>
+                )}
             </div>
 
             {/* Top Metrics Row */}

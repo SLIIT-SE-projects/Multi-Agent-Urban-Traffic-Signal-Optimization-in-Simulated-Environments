@@ -78,7 +78,29 @@ def health_check():
 def start_simulation():
     data = request.get_json(silent=True) or {}
     suppress_demand = bool(data.get('suppress_demand', False))
-    result = sim_controller.start(suppress_demand=suppress_demand)
+    use_evps = bool(data.get('use_evps', False))
+    
+    # We must trigger the EVPS backend over Redis BEFORE or concurrently 
+    # with `sim_controller.start()`. If we wait, `traci.start()` will block 
+    # infinitely waiting for the 2nd client, deadlocking the API thread.
+    if use_evps:
+        import threading
+        def trigger_evps():
+            # Give SUMO half a second to bind on 8813 before the EVPS client connects
+            import time
+            time.sleep(0.5) 
+            try:
+                import redis
+                r = redis.Redis(host='localhost', port=6379, db=0, decode_responses=True)
+                r.publish('control_evps', 'start')
+                print("Published 'start' to EVPS over Redis.")
+            except Exception as e:
+                print(f"Failed to trigger EVPS via Redis: {e}")
+        threading.Thread(target=trigger_evps, daemon=True).start()
+
+    # This call blocks until both clients connect if use_evps=True
+    result = sim_controller.start(suppress_demand=suppress_demand, use_evps=use_evps)
+            
     return jsonify(result)
 
 
@@ -106,6 +128,18 @@ def resume_simulation():
 
 @app.route('/api/simulation/stop', methods=['POST'])
 def stop_simulation():
+    # If EVPS is active, we MUST tell it to disconnect its TraCI client
+    # before we call sim_controller.stop() because sim_controller.stop() 
+    # blocks until all TraCI clients disconnect. 
+    if sim_controller.use_evps:
+        try:
+            import redis
+            r = redis.Redis(host='localhost', port=6379, db=0, decode_responses=True)
+            r.publish('control_evps', 'stop')
+            print("Published 'stop' to EVPS over Redis.")
+        except Exception as e:
+            print(f"Failed to stop EVPS via Redis: {e}")
+            
     result = sim_controller.stop()
     return jsonify(result)
 
@@ -508,4 +542,4 @@ if __name__ == '__main__':
     print(f"Step delay: {config.STEP_DELAY}s")
     print(f"API will be available at: http://localhost:{config.PORT}")
     print("=" * 60)
-    socketio.run(app, debug=config.DEBUG, port=config.PORT, host=config.HOST)
+    app.run(debug=config.DEBUG, port=config.PORT, host=config.HOST)

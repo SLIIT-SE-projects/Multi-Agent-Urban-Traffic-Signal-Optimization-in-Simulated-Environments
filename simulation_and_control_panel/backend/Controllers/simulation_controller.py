@@ -41,6 +41,7 @@ class SimulationController:
         self.flow_rates: dict = {}          # route_id -> vehicles_per_hour
         self._flow_last_injections: dict = {}  # route_id -> last sim-time (s)
         self._flow_vehicle_counter: int = 0
+        self.use_evps = False
 
     def _get_net_file_from_config(self):
         """
@@ -526,7 +527,7 @@ class SimulationController:
         self.is_paused = False
         return {"status": "success", "message": "Auto-stepping resumed", "step": self.current_step}
 
-    def start(self, suppress_demand: bool = False):
+    def start(self, suppress_demand: bool = False, use_evps: bool = False):
         """Start the simulation.
 
         Args:
@@ -534,6 +535,8 @@ class SimulationController:
                 pre-defined vehicles from the route/trip files are inserted.  Use
                 this when you want vehicle flow to be driven exclusively by the
                 dynamic flow-rate injection API.
+            use_evps: When True, forces SUMO to expect 2 TraCI clients so the
+                EVPS microservice can connect on port 8813.
         """
         if self.stopping:
             return {"status": "error", "message": "Simulation is still shutting down, please wait a moment"}
@@ -550,6 +553,9 @@ class SimulationController:
         # Choose SUMO binary based on use_gui setting
         sumo_binary = "sumo-gui" if self.use_gui else "sumo"
         sumo_cmd = [sumo_binary, "-c", self.config_file, "--start"]
+        
+        if use_evps:
+            sumo_cmd += ["--num-clients", "2"]
 
         if suppress_demand:
             # Scale the built-in demand to zero — none of the vehicles defined
@@ -558,10 +564,12 @@ class SimulationController:
             print("[FlowRate] Built-in demand suppressed (--scale 0). Only injected vehicles will run.")
         
         try:
-            traci.start(sumo_cmd)
+            traci.start(sumo_cmd, port=8813)
+            traci.setOrder(1) # Core Simulation is Client 1
             self.is_running = True
             self.is_paused = False
             self.current_step = 0
+            self.use_evps = use_evps
             print(f"Simulation started with config: {self.config_file}")
             print(f"GUI mode: {self.use_gui}")
             

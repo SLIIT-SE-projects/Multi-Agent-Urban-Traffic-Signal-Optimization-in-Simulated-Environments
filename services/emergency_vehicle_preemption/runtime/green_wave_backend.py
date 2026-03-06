@@ -12,6 +12,7 @@ import random
 from collections import deque
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
+import redis.asyncio as redis
 
 # --- CONFIGURATION ---
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -35,6 +36,9 @@ class GreenWaveController:
     def __init__(self): 
         self.ev_id = "EV_0" # The EV currently focused on the Mobile App
         self.running = False
+        self.redis_client = None
+        self.metrics_channel = "evps_metrics"
+        self.control_channel = "control_evps"
         
         print("Loading AI Models...")
         try:
@@ -65,39 +69,66 @@ class GreenWaveController:
         # Ensures that once an EV wins and locks a light, it keeps it until it passes.
         self.active_override_tls_ids = {} 
 
+    async def connect_redis(self):
+        try:
+            self.redis_client = await redis.Redis(host='localhost', port=6379, db=0, decode_responses=True)
+            print("Connected to Redis successfully.")
+        except Exception as e:
+            print(f"Failed to connect to Redis: {e}")
+
     def start_sumo(self):
-        sumo_cmd = ["sumo-gui", "-c", SUMO_CONFIG, "--start"]
-        traci.start(sumo_cmd)
-        self.running = True
-        print("Simulation Started.")
+        print("Connecting to existing SUMO simulation via TraCI on port 8813...")
+        # We NO LONGER start the simulation binary ourselves.
+        # Core Flask app does this. We connect as a secondary client.
+        try:
+            traci.init(port=8813)
+            traci.setOrder(2)  # EVPS acts as Client 2
+            self.running = True
+            print("Successfully connected to TraCI! Awaiting simulation steps...")
+        except Exception as e:
+            print(f"Failed to connect to TraCI (is the Core Simulation running?): {e}")
 
     def stop_sumo(self):
         try:
             traci.close()
             self.running = False
+            print("Disconnected from TraCI.")
         except: pass
 
     def simulation_step(self):
         if not self.running: return None
 
         try:
+            # TraCI multi-client synchronization wait.
+            # This blocks until Flask (Client 1) and EVPS (Client 2) BOTH call step()
+            traci.simulationStep()
+            
+            # If the simulation has ended, we can stop
             if traci.simulation.getMinExpectedNumber() <= 0:
                 self.stop_sumo()
                 return None
 
-            traci.simulationStep()
-            
             # --- 1. GLOBAL RADAR: Update state for ALL vehicles ---
             self._update_global_fleet_state()
             
             # --- 2. THE ARBITER: Manage conflicts and preemption for ALL vehicles ---
             self._manage_fleet_preemption()
 
-            # --- 3. PRESENTATION: Return data only for the selected EV to the App ---
-            return self._build_status_packet()
+            # --- 3. Gather Dashboard Metrics ---
+            metrics = {
+                "total_active_evs": len(self.fleet),
+                "green_waves_active": len(self.active_override_tls_ids),
+                "focus_ev": self.ev_id
+            }
+
+            # --- 4. PRESENTATION: Return data only for the selected EV to the App ---
+            packet = self._build_status_packet()
+            packet["global_metrics"] = metrics # piggyback for the dashboard
+            return packet
 
         except Exception as e:
-            print(f"Sim Error: {e}")
+            print(f"Sim Error/Disconnected: {e}")
+            self.running = False
             return None
 
     def switch_vehicle(self, new_ev_id):
@@ -439,18 +470,30 @@ controller = GreenWaveController()
 async def websocket_endpoint(websocket: WebSocket):
     await websocket.accept()
     print("Flutter Client Connected!")
-    
-    if not controller.running:
-        controller.start_sumo()
+
+    if not controller.redis_client:
+        await controller.connect_redis()
 
     try:
         while True:
-            status = controller.simulation_step()
-            if status:
-                await websocket.send_text(json.dumps(status))
+            packet = controller.simulation_step()
+            if packet:
+                # Extract metrics before sending only the status to the mobile app
+                global_metrics = packet.pop("global_metrics", None)
+                
+                await websocket.send_text(json.dumps(packet))
+                
+                # Publish metrics to Redis for the React Dashboard
+                if controller.redis_client and global_metrics:
+                    await controller.redis_client.publish(
+                        controller.metrics_channel, 
+                        json.dumps(global_metrics)
+                    )
+            else:
+                 await asyncio.sleep(0.1) # Prevent tight loop if disconnected
             
             try:
-                data = await asyncio.wait_for(websocket.receive_text(), timeout=0.05)
+                data = await asyncio.wait_for(websocket.receive_text(), timeout=0.01)
                 message = json.loads(data)
                 
                 if message["type"] == "switch_ev":
@@ -466,9 +509,47 @@ async def websocket_endpoint(websocket: WebSocket):
             
     except WebSocketDisconnect:
         print("Flutter Client Disconnected")
-        controller.stop_sumo()
     except Exception as e:
         print(f"Socket Error: {e}")
+
+@app.on_event("startup")
+async def startup_event():
+    await controller.connect_redis()
+
+    # Background task to listen to start command
+    async def listen_to_redis():
+        pubsub = controller.redis_client.pubsub()
+        await pubsub.subscribe(controller.control_channel)
+        print(f"Listening to Redis channel: {controller.control_channel}")
+        
+        async for message in pubsub.listen():
+            if message['type'] == 'message':
+                data = message['data']
+                print(f"Received control message: {data}")
+                if data == "start" and not controller.running:
+                    controller.start_sumo()
+                elif data == "stop" and controller.running:
+                    controller.stop_sumo()
+                    
+    async def autonomous_sim_loop():
+        # This keeps the EVPS logic ticking and broadcasting metrics
+        # completely independently of the Mobile App websocket
+        while True:
+            if controller.running:
+                packet = controller.simulation_step()
+                if packet:
+                    global_metrics = packet.pop("global_metrics", None)
+                    if controller.redis_client and global_metrics:
+                        await controller.redis_client.publish(
+                            controller.metrics_channel, 
+                            json.dumps(global_metrics)
+                        )
+            await asyncio.sleep(0.01)
+
+    asyncio.create_task(listen_to_redis())
+    asyncio.create_task(autonomous_sim_loop())
+
+
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8000)
