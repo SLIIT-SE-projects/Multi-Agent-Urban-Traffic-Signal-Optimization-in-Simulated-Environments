@@ -5,6 +5,7 @@ import { useTrafficSocket } from './hooks/useTrafficSocket';
 import GnnMonitorTab from './components/GnnMonitorTab';
 import GnnConfigTab from './components/GnnConfigTab';
 import GnnGraphTab from './components/GnnGraphTab';
+import SystemHealthFooter from './components/SystemHealthFooter';
 
 export default function GNNDashboard() {
   const [activeSubTab, setActiveSubTab] = useState('monitor');
@@ -75,6 +76,8 @@ export default function GNNDashboard() {
           </div>
         )}
       </div>
+
+      <SystemHealthFooter socketConnected={socketData.isConnected} />
     </div>
   );
 }
