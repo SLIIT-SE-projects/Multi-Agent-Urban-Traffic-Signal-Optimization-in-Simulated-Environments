@@ -27,15 +27,22 @@ const GnnChartCard: React.FC<ChartCardProps> = ({ title, data, baselineData = []
             }
         });
 
+        const resolveKey = (obj: any, path: string) => {
+            return path.split('.').reduce((acc, part) => acc && acc[part], obj);
+        };
+
         // Map live data and attach corresponding baseline data
         return data.map(liveItem => {
             const currentStep = liveItem.step;
             const baselineItem = baselineMap.get(currentStep);
 
+            const liveValue = resolveKey(liveItem, dataKey) || 0;
+            const baselineValue = baselineItem ? resolveKey(baselineItem, dataKey) : null;
+
             return {
                 step: currentStep,
-                [dataKey]: liveItem[dataKey],
-                [`baseline_${dataKey}`]: baselineItem ? baselineItem[dataKey] : null
+                [dataKey]: liveValue,
+                [`baseline_${dataKey}`]: baselineValue
             };
         });
     }, [data, baselineData, dataKey]);
