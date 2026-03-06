@@ -1,0 +1,7 @@
+<configuration>
+    <input>
+        <net-file value="katunayake.net.xml"/>
+        <route-files value="katunayake.rou.xml"/>
+    </input>
+    <time><begin value="0"/><end value="4000"/></time>
+</configuration>
