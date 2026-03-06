@@ -5,6 +5,7 @@ import { useTrafficSocket } from './hooks/useTrafficSocket';
 import GnnMonitorTab from './components/GnnMonitorTab';
 import GnnConfigTab from './components/GnnConfigTab';
 import GnnGraphTab from './components/GnnGraphTab';
+import GnnGraphStateTab from './components/GnnGraphStateTab';
 import SystemHealthFooter from './components/SystemHealthFooter';
 
 export default function GNNDashboard() {
@@ -48,6 +49,7 @@ export default function GNNDashboard() {
       <div className="flex border-b border-slate-800 mb-6">
         {[
           { id: 'monitor', label: 'Real-time Monitor', icon: Activity },
+          { id: 'state', label: 'Graph State', icon: FileText },
           { id: 'graph', label: 'Network Graph', icon: Share2 },
           { id: 'config', label: 'Model Configuration', icon: Sliders },
           { id: 'logs', label: 'Training Logs', icon: FileText },
@@ -67,6 +69,7 @@ export default function GNNDashboard() {
 
       <div className={`flex-1 pr-2 scrollbar-thin scrollbar-thumb-slate-800 scrollbar-track-transparent ${activeSubTab === 'graph' ? 'overflow-hidden' : 'overflow-y-auto'}`}>
         {activeSubTab === 'monitor' && <GnnMonitorTab socketData={socketData} isRunning={isRunning} />}
+        {activeSubTab === 'state' && <GnnGraphStateTab socketData={socketData} />}
         {activeSubTab === 'graph' && <GnnGraphTab socketData={socketData} />}
         {activeSubTab === 'config' && <GnnConfigTab />}
         {activeSubTab === 'logs' && (
