@@ -36,11 +36,11 @@ class ScenarioController:
                     scenario_path = os.path.join(self.SCENARIOS_DIR, scenario_folder)
                     
                     if os.path.isdir(scenario_path):
-                        # Find .sumo.cfg file in this folder
-                        cfg_files = glob.glob(os.path.join(scenario_path, "*.sumo.cfg"))
+                        # Find .sumo.cfg or .sumocfg file in this folder
+                        cfg_files = glob.glob(os.path.join(scenario_path, "*.sumo.cfg")) + glob.glob(os.path.join(scenario_path, "*.sumocfg"))
                         
                         if cfg_files:
-                            cfg_file = cfg_files[0]  # Use first .sumo.cfg found
+                            cfg_file = cfg_files[0]  # Use first config found
                             scenarios.append({
                                 "name": scenario_folder,
                                 "config_file": cfg_file,
@@ -77,12 +77,12 @@ class ScenarioController:
         try:
             # Validate scenario exists
             scenario_path = os.path.join(self.SCENARIOS_DIR, scenario_name)
-            cfg_files = glob.glob(os.path.join(scenario_path, "*.sumo.cfg"))
+            cfg_files = glob.glob(os.path.join(scenario_path, "*.sumo.cfg")) + glob.glob(os.path.join(scenario_path, "*.sumocfg"))
             
             if not cfg_files:
                 return {
                     "status": "error",
-                    "message": f"Scenario '{scenario_name}' not found or has no .sumo.cfg file"
+                    "message": f"Scenario '{scenario_name}' not found or has no .sumo.cfg or .sumocfg file"
                 }
             
             config_file = cfg_files[0]
