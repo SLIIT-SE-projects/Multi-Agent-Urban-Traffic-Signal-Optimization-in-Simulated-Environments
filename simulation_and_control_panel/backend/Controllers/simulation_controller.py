@@ -369,13 +369,18 @@ class SimulationController:
                 # Capture global metrics
                 arrived_vehicles = traci.simulation.getArrivedNumber()
                 
+                opt_telemetry = {}
+                if self.optimization_enabled and self.optimizer and hasattr(self.optimizer, 'get_telemetry'):
+                    opt_telemetry = self.optimizer.get_telemetry()
+                
                 self.socketio.emit('simulation_step', {
                     'step': self.current_step,
                     'lanes': snapshot['lanes'],
                     'intersections': snapshot['intersections'],
                     'global': {
                         'arrived_vehicles': arrived_vehicles
-                    }
+                    },
+                    'optimizer_telemetry': opt_telemetry
                 })
             except Exception as e:
                 print(f"Socket Emit Error: {e}")

@@ -1,5 +1,6 @@
 import sys
 import os
+import time
 import torch
 import torch.nn.functional as F
 from torch_geometric.data import Batch
@@ -103,8 +104,10 @@ class GNNTrafficOptimizer:
         
         self.engine.initialize_model()
         self.hidden_state = None
+        self.latest_telemetry = {"inferenceLatencyMs": 0.0, "uncertaintyScore": 0.0}
 
     def predict(self, raw_sumo_data):
+        start_time = time.time()
         # 1. Data Prep
         data = self.engine.graph_builder.create_hetero_data(raw_sumo_data)
         num_intersections = data['intersection'].x.shape[0]
@@ -181,7 +184,15 @@ class GNNTrafficOptimizer:
             # model_action is already 0 (keep) or 1 (switch) from argmax of 2-class output
             actions_dict[tls_id] = model_action  # 0=keep, 1=switch
             
+        self.latest_telemetry = {
+            "inferenceLatencyMs": round((time.time() - start_time) * 1000, 2),
+            "uncertaintyScore": float(uncertainty_score)
+        }
+            
         return actions_dict
+
+    def get_telemetry(self):
+        return self.latest_telemetry
 
     def reset(self):
         self.hidden_state = None
