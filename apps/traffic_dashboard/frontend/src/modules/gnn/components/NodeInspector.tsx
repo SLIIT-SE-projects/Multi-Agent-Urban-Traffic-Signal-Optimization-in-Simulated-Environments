@@ -1,5 +1,97 @@
 import { X, Activity, Clock, Car } from 'lucide-react';
 
+// Add 'red-yellow' to the type definition
+interface LightState {
+    color: 'green' | 'yellow' | 'red' | 'red-yellow';
+    time: number;
+}
+
+interface TrafficLightProps {
+    phaseIndex: number;
+    timeToSwitch: number;
+}
+
+const TrafficLightVisualizer: React.FC<TrafficLightProps> = ({ phaseIndex, timeToSwitch }) => {
+    const pIdx = (phaseIndex !== undefined) ? (phaseIndex % 4) : 0;
+    const time = Math.max(0, Math.round(timeToSwitch));
+
+    let nsState: LightState = { color: 'red', time: 0 };
+    let ewState: LightState = { color: 'red', time: 0 };
+
+    // --- ADVANCED REAL-WORLD PHASE MAPPING ---
+    switch (pIdx) {
+        case 0: // NS is Green (Go), EW is solid Red
+            nsState = { color: 'green', time: time };
+            ewState = { color: 'red', time: 0 };
+            break;
+        case 1: // NS is Yellow (Stopping), EW is Red+Yellow (Preparing to go)
+            nsState = { color: 'yellow', time: time };
+            ewState = { color: 'red-yellow', time: time };
+            break;
+        case 2: // NS is solid Red, EW is Green (Go)
+            nsState = { color: 'red', time: 0 };
+            ewState = { color: 'green', time: time };
+            break;
+        case 3: // NS is Red+Yellow (Preparing to go), EW is Yellow (Stopping)
+            nsState = { color: 'red-yellow', time: time };
+            ewState = { color: 'yellow', time: time };
+            break;
+        default:
+            nsState = { color: 'red', time: 0 };
+            ewState = { color: 'red', time: 0 };
+    }
+
+    const renderLightStack = (label: string, state: LightState) => {
+        // Dynamic styling that supports multiple lights being active at once
+        const getCircleClass = (lightColor: 'red' | 'yellow' | 'green') => {
+            let isActive = false;
+            if (lightColor === 'red') isActive = state.color === 'red' || state.color === 'red-yellow';
+            if (lightColor === 'yellow') isActive = state.color === 'yellow' || state.color === 'red-yellow';
+            if (lightColor === 'green') isActive = state.color === 'green';
+
+            const base = "w-12 h-12 rounded-full border-2 border-slate-950 flex items-center justify-center font-mono font-bold text-lg transition-all duration-300 ";
+            const inactive = "bg-slate-800 border-slate-800 text-slate-600";
+
+            switch (lightColor) {
+                case 'red':
+                    return base + (isActive ? 'bg-rose-500 shadow-[0_0_15px_rgba(244,63,94,0.8)] text-slate-950' : inactive);
+                case 'yellow':
+                    return base + (isActive ? 'bg-amber-400 shadow-[0_0_15px_rgba(251,191,36,0.8)] text-slate-950' : inactive);
+                case 'green':
+                    return base + (isActive ? 'bg-emerald-500 shadow-[0_0_15px_rgba(16,185,129,0.8)] text-slate-950' : inactive);
+            }
+        };
+
+        return (
+            <div className="flex flex-col items-center gap-1.5 p-2 bg-slate-950/80 border-2 border-slate-800 rounded-3xl w-20 shadow-inner">
+                <div className="text-sm font-bold text-slate-300 mb-1">{label}</div>
+
+                {/* RED Circle */}
+                <div className={getCircleClass('red')}>
+                    {/* Typically countdown is shown in yellow/green, but can be added here if desired */}
+                </div>
+
+                {/* YELLOW Circle */}
+                <div className={getCircleClass('yellow')}>
+                    {(state.color === 'yellow' || state.color === 'red-yellow') ? state.time : ''}
+                </div>
+
+                {/* GREEN Circle */}
+                <div className={getCircleClass('green')}>
+                    {state.color === 'green' ? state.time : ''}
+                </div>
+            </div>
+        );
+    };
+
+    return (
+        <div className="flex items-start justify-center gap-4 my-6">
+            {renderLightStack("N-S", nsState)}
+            {renderLightStack("E-W", ewState)}
+        </div>
+    );
+};
+
 interface NodeInspectorProps {
     nodeId: string;
     socketData: any;
@@ -39,18 +131,10 @@ export default function NodeInspector({ nodeId, socketData, onClose }: NodeInspe
                         <Clock size={16} className="text-amber-400" />
                         Phase Control State
                     </h3>
-                    <div className="grid grid-cols-2 gap-4">
-                        <div>
-                            <p className="text-xs text-slate-400 mb-1">Current Phase</p>
-                            <p className="text-2xl font-bold text-white">{nodeData.phase_index}</p>
-                        </div>
-                        <div>
-                            <p className="text-xs text-slate-400 mb-1">Time to Switch</p>
-                            <p className="text-lg font-bold text-emerald-400">
-                                {nodeData.time_to_switch > 0 ? `${nodeData.time_to_switch.toFixed(1)}s` : 'Switching...'}
-                            </p>
-                        </div>
-                    </div>
+                    <TrafficLightVisualizer
+                        phaseIndex={nodeData.phase_index}
+                        timeToSwitch={nodeData.time_to_switch}
+                    />
                 </div>
 
                 <div className="bg-slate-800/50 rounded-xl p-4 border border-slate-700/50">
