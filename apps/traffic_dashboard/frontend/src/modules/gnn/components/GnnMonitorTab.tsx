@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Activity, Car, Cpu, Brain } from 'lucide-react';
 import GnnStatCard from './GnnStatCard';
 import GnnChartCard from './GnnChartCard';
+import GnnRealTimeLatencyBarChart from './GnnRealTimeLatencyBarChart';
 import GnnActionLog from './GnnActionLog';
 import { DASHBOARD_API_URL } from '../../../config';
 
@@ -15,7 +16,13 @@ interface GnnMonitorTabProps {
 
 const GnnMonitorTab: React.FC<GnnMonitorTabProps> = ({ socketData, isRunning }) => {
     const { currentMetrics, dataHistory } = socketData;
-    const gnnTelemetry = currentMetrics?.gnn_telemetry || { inferenceLatencyMs: 0, uncertaintyScore: 0 };
+    const gnnTelemetry = currentMetrics?.gnn_telemetry || { perNodeLatencyMs: {}, uncertaintyScore: 0 };
+
+    // Process new per-node latency map into an average for the stat card
+    const latencies = Object.values(gnnTelemetry.perNodeLatencyMs || {}) as number[];
+    const avgLatency = latencies.length > 0
+        ? latencies.reduce((sum, val) => sum + val, 0) / latencies.length
+        : 0;
     const [baselineData, setBaselineData] = useState<any[]>([]);
 
     useEffect(() => {
@@ -46,14 +53,14 @@ const GnnMonitorTab: React.FC<GnnMonitorTabProps> = ({ socketData, isRunning }) 
     return (
         <div className="space-y-6 animate-in fade-in duration-500">
             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
-                <GnnStatCard title="Inference Latency" value={gnnTelemetry.inferenceLatencyMs} unit="ms" icon={<Cpu />} color="text-emerald-500" />
+                <GnnStatCard title="Avg Node Latency" value={avgLatency.toFixed(2)} unit="ms" icon={<Cpu />} color="text-emerald-500" />
                 <GnnStatCard title="Model Uncertainty" value={gnnTelemetry.uncertaintyScore} unit="Score" icon={<Brain />} color="text-amber-500" />
                 <GnnStatCard title="Avg Queue" value={currentMetrics.total_queue} unit="veh" icon={<Car />} color="text-blue-500" />
                 <GnnStatCard title="Throughput" value={currentMetrics.cumulative_throughput} unit="veh" icon={<Activity />} color="text-purple-500" />
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                <GnnChartCard title="Inference Latency (ms)" data={dataHistory} dataKey="gnn_telemetry.inferenceLatencyMs" color="text-emerald-500" fillId="latGrad" />
+                <GnnRealTimeLatencyBarChart socketData={socketData} />
                 <GnnChartCard title="Model Uncertainty Score" data={dataHistory} dataKey="gnn_telemetry.uncertaintyScore" color="text-amber-500" fillId="uncGrad" />
             </div>
 

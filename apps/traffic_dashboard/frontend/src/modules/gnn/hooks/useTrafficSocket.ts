@@ -2,7 +2,7 @@ import { useEffect, useState, useRef } from 'react';
 import { WS_BASE_URL, ENDPOINTS } from '../../../config';
 
 export interface GnnPerformanceMetrics {
-    inferenceLatencyMs: number;
+    perNodeLatencyMs: Record<string, number>;
     uncertaintyScore: number;
 }
 
@@ -22,7 +22,7 @@ export const useTrafficSocket = () => {
     const [isConnected, setIsConnected] = useState(false);
     const [dataHistory, setDataHistory] = useState<TrafficData[]>([]);
     const [currentMetrics, setCurrentMetrics] = useState<TrafficData>({
-        step: 0, total_queue: 0, avg_speed: 0, total_co2: 0, total_waiting_time: 0, cumulative_throughput: 0, gnn_telemetry: undefined
+        step: 0, total_queue: 0, avg_speed: 0, total_co2: 0, total_waiting_time: 0, cumulative_throughput: 0, gnn_telemetry: { perNodeLatencyMs: {}, uncertaintyScore: 0 }
     });
 
     const ws = useRef<WebSocket | null>(null);
