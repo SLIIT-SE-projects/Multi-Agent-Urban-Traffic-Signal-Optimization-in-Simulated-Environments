@@ -366,7 +366,8 @@ class EVPSAdapter:
                 "type": "status", "ev_id": self.ev_id, "active": self.active,
                 "eta": 0.0, "speed": 0.0, "lat": 0.0, "lon": 0.0,
                 "priority": 1, "green_wave_active": False, "safety_blocked": False,
-                "tls_id": "", "active_junctions": []
+                "tls_id": "", "active_junctions": [],
+                "active_fleet": list(self.fleet.keys())
             }
 
         ev_data = self.fleet[self.ev_id]
@@ -431,7 +432,8 @@ class EVPSAdapter:
                 "green_wave_active": is_green_wave,
                 "safety_blocked": ev_data["safety_blocked"],
                 "tls_id": display_tls_id,
-                "active_junctions": active_junctions
+                "active_junctions": active_junctions,
+                "active_fleet": list(self.fleet.keys())
             }
         except:
-            return {"type": "status", "ev_id": self.ev_id, "active": self.active}
+            return {"type": "status", "ev_id": self.ev_id, "active": self.active, "active_fleet": list(self.fleet.keys())}
