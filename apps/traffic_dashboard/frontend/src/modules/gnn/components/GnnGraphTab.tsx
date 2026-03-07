@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import { Share2 } from 'lucide-react';
 import {
     ReactFlow,
@@ -12,6 +12,7 @@ import type { Node, Edge } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import { DASHBOARD_API_URL } from '../../../config';
 import NodeInspector from './NodeInspector';
+import GnnCustomNode from './GnnCustomNode';
 
 interface GnnGraphTabProps {
     socketData?: any;
@@ -24,6 +25,8 @@ export default function GnnGraphTab({ socketData }: GnnGraphTabProps) {
     const [error, setError] = useState<string | null>(null);
     const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
 
+    const nodeTypes = useMemo(() => ({ custom: GnnCustomNode }), []);
+
     useEffect(() => {
         fetch(`${DASHBOARD_API_URL}/api/network-graph`)
             .then(res => res.json())
@@ -34,21 +37,9 @@ export default function GnnGraphTab({ socketData }: GnnGraphTabProps) {
                     // Map nodes (intersections)
                     const newNodes = (data.intersections || []).map((intersection: any) => ({
                         id: intersection.id,
+                        type: 'custom',
                         position: { x: intersection.x, y: -(intersection.y || 0) },
-                        data: { label: intersection.id },
-                        style: {
-                            background: '#1e293b', // slate-800
-                            color: '#f8fafc', // slate-50
-                            border: '1px solid #334155', // slate-700
-                            borderRadius: '50%', // Circle shape
-                            padding: '10px',
-                            fontSize: '10px',
-                            display: 'flex',
-                            justifyContent: 'center',
-                            alignItems: 'center',
-                            width: '40px',
-                            height: '40px'
-                        }
+                        data: { label: intersection.id }
                     }));
 
                     // Map edges (adjacency)
@@ -83,28 +74,15 @@ export default function GnnGraphTab({ socketData }: GnnGraphTabProps) {
             nds.map((node) => {
                 const liveData = liveIntersections[node.id];
                 if (liveData) {
-                    // Green phase logic based on phase index is complex without full timing plan, 
-                    // but we can distinguish active nodes with a glowing effect representing connection stability
-                    let borderColor = '#22c55e'; // Green stable
-                    let shadow = 'rgba(34, 197, 94, 0.4)';
-
                     return {
                         ...node,
-                        style: {
-                            ...node.style,
-                            border: `2px solid ${borderColor}`,
-                            boxShadow: `0 0 10px ${shadow}`
-                        }
+                        data: { ...node.data, phase_index: liveData.phase_index }
                     };
                 }
 
                 return {
                     ...node,
-                    style: {
-                        ...node.style,
-                        border: '1px solid #334155',
-                        boxShadow: 'none'
-                    }
+                    data: { ...node.data, phase_index: undefined }
                 };
             })
         );
@@ -158,6 +136,7 @@ export default function GnnGraphTab({ socketData }: GnnGraphTabProps) {
                 <ReactFlow
                     nodes={nodes}
                     edges={edges}
+                    nodeTypes={nodeTypes}
                     onNodesChange={onNodesChange}
                     onEdgesChange={onEdgesChange}
                     onNodeClick={(_, node) => setSelectedNodeId(node.id)}
