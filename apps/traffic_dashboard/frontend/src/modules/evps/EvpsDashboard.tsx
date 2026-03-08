@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useEvpsSocket } from './hooks/useEvpsSocket';
-import { Activity, Zap, Car, AlertTriangle, CheckCircle, Play, Square, MapPin } from 'lucide-react';
+import { Activity, Zap, Car, AlertTriangle, CheckCircle, Play, Square, MapPin, Sun, Moon } from 'lucide-react';
 import { MapContainer, TileLayer, Marker, Popup, useMapEvents, GeoJSON } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
@@ -36,6 +36,7 @@ export default function EvpsDashboard() {
     const [isDispatching, setIsDispatching] = useState(false);
     const [networkGeoJson, setNetworkGeoJson] = useState<any>(null);
     const [customEvId, setCustomEvId] = useState('');
+    const [isMapDark, setIsMapDark] = useState(true);
 
     // Fetch network topology GeoJSON on mount
     useEffect(() => {
@@ -274,6 +275,13 @@ export default function EvpsDashboard() {
                         </p>
                     </div>
                     <div className="flex gap-3 items-center">
+                        <button
+                            onClick={() => setIsMapDark(!isMapDark)}
+                            className="p-2 bg-slate-800 border border-slate-700 rounded-lg text-slate-400 hover:text-white hover:border-slate-500 transition-colors flex items-center justify-center"
+                            title={isMapDark ? "Switch to Light Map" : "Switch to Dark Map"}
+                        >
+                            {isMapDark ? <Moon size={20} /> : <Sun size={20} />}
+                        </button>
                         <input
                             type="text"
                             placeholder="Custom EV ID (Optional)"
@@ -301,8 +309,8 @@ export default function EvpsDashboard() {
                 <div className="h-[400px] w-full relative z-0">
                     <MapContainer center={[centerLat, centerLon]} zoom={13} style={{ height: '100%', width: '100%' }}>
                         <TileLayer
-                            url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
-                            attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>'
+                            url={isMapDark ? 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png' : 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png'}
+                            attribution='&copy; <a href="https://carto.com/attributions">CARTO</a>'
                         />
                         <MapClickHandler onMapClick={handleMapClick} />
                         {startCoords && (
@@ -318,7 +326,7 @@ export default function EvpsDashboard() {
                         {networkGeoJson && (
                             <GeoJSON
                                 data={networkGeoJson}
-                                style={{ color: '#3b82f6', weight: 3, opacity: 0.6 }}
+                                style={{ color: '#00e5ff', weight: 3, opacity: 0.8 }}
                             />
                         )}
                     </MapContainer>
