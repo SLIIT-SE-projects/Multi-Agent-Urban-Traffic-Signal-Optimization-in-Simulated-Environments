@@ -102,6 +102,57 @@ class EVPSAdapter:
             self.fleet[target_ev_id]["priority"] = int(new_priority)
             print(f"EVPS Adapter: Elevated {target_ev_id} to Priority Level {new_priority}")
 
+    def spawn_ev_from_geo(self, start_lon, start_lat, end_lon, end_lat, ev_id=None):
+        """Called via API to spawn a new EV dynamically using geographic coordinates."""
+        try:
+            # 1. Convert Geographic Coords to SUMO Edge IDs
+            start_edge_info = traci.simulation.convertRoad(start_lon, start_lat, isGeo=True)
+            end_edge_info = traci.simulation.convertRoad(end_lon, end_lat, isGeo=True)
+            
+            start_edge = start_edge_info[0]
+            end_edge = end_edge_info[0]
+
+            if not start_edge or not end_edge:
+                return {"status": "error", "message": "Could not map coordinates to valid edges."}
+
+            # 2. Find intermediate route
+            route_path = traci.simulation.findRoute(start_edge, end_edge)
+            if not route_path.edges:
+                return {"status": "error", "message": "No valid route found between selected points."}
+
+            import time
+            timestamp = int(time.time() * 1000)
+            route_id = f"route_dynamic_ev_{timestamp}"
+            
+            if ev_id and str(ev_id).strip():
+                base_id = str(ev_id).strip()
+                if not base_id.startswith("EV_"):
+                    veh_id = f"EV_{base_id}"
+                else:
+                    veh_id = base_id
+            else:
+                veh_id = f"EV_Dynamic_{timestamp}"
+
+            # 3. Add to TraCI Simulation
+            traci.route.add(route_id, route_path.edges)
+            try:
+                traci.vehicle.add(veh_id, route_id, typeID="ambulance", depart="now")
+            except traci.exceptions.TraCIException:
+                traci.vehicle.add(veh_id, route_id, depart="now")
+
+            print(f"EVPS Adapter: Successfully spawned {veh_id}")
+            self.switch_vehicle(veh_id)
+            
+            return {
+                "status": "success", 
+                "message": f"Successfully dispatched {veh_id}.",
+                "vehicle_id": veh_id
+            }
+        except Exception as e:
+            print(f"EVPS Adapter: Error spawning EV - {str(e)}")
+            return {"status": "error", "message": str(e)}
+
+
     def _broadcast_status(self, active):
         if not self.ws_connections: return
 

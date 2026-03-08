@@ -1,15 +1,110 @@
+import { useState, useEffect } from 'react';
 import { useEvpsSocket } from './hooks/useEvpsSocket';
-import { Activity, Zap, Car, AlertTriangle, CheckCircle, Play, Square } from 'lucide-react';
+import { Activity, Zap, Car, AlertTriangle, CheckCircle, Play, Square, MapPin } from 'lucide-react';
+import { MapContainer, TileLayer, Marker, Popup, useMapEvents, GeoJSON } from 'react-leaflet';
+import 'leaflet/dist/leaflet.css';
+import L from 'leaflet';
+
+const createMarkerIcon = (color: string) => {
+    return L.divIcon({
+        className: 'custom-icon',
+        html: `<div style="background-color: ${color}; width: 20px; height: 20px; border-radius: 50%; border: 2px solid white; box-shadow: 0 2px 4px rgba(0,0,0,0.5);"></div>`,
+        iconSize: [20, 20],
+        iconAnchor: [10, 10]
+    });
+};
+
+const startIcon = createMarkerIcon('#10b981'); // Emerald
+const endIcon = createMarkerIcon('#f43f5e'); // Rose
+
+const MapClickHandler = ({ onMapClick }: { onMapClick: (lat: number, lon: number) => void }) => {
+    useMapEvents({
+        click(e) {
+            onMapClick(e.latlng.lat, e.latlng.lng);
+        }
+    });
+    return null;
+};
 
 // Using the same API base as SystemOverview for the toggle fetch
 const BASE_URL = '/api';
 
 export default function EvpsDashboard() {
     const { isConnected, metrics } = useEvpsSocket();
+    const [startCoords, setStartCoords] = useState<{ lat: number, lon: number } | null>(null);
+    const [endCoords, setEndCoords] = useState<{ lat: number, lon: number } | null>(null);
+    const [isDispatching, setIsDispatching] = useState(false);
+    const [networkGeoJson, setNetworkGeoJson] = useState<any>(null);
+    const [customEvId, setCustomEvId] = useState('');
+
+    // Fetch network topology GeoJSON on mount
+    useEffect(() => {
+        const fetchNetworkGeojson = async () => {
+            try {
+                const response = await fetch(`${BASE_URL}/network/geojson`);
+                if (response.ok) {
+                    const data = await response.json();
+                    setNetworkGeoJson(data);
+                } else {
+                    console.error('Failed to fetch network GeoJSON:', response.statusText);
+                }
+            } catch (error) {
+                console.error('Error fetching network GeoJSON:', error);
+            }
+        };
+
+        fetchNetworkGeojson();
+    }, []);
 
     const { active_evs = 0, override_junctions = [], evps_status = 'Idle', fleet = [] } = metrics;
 
     const isSystemActive = evps_status === 'Active';
+
+    // Default Map center
+    const centerLat = metrics.lat || 7.173;
+    const centerLon = metrics.lon || 79.885;
+
+    const handleMapClick = (lat: number, lon: number) => {
+        if (!startCoords) {
+            setStartCoords({ lat, lon });
+        } else if (!endCoords) {
+            setEndCoords({ lat, lon });
+        } else {
+            setStartCoords({ lat, lon });
+            setEndCoords(null);
+        }
+    };
+
+    const handleDispatch = async () => {
+        if (!startCoords || !endCoords) return;
+        setIsDispatching(true);
+        try {
+            const response = await fetch(`${BASE_URL}/evps/spawn_geo`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    start_lat: startCoords.lat,
+                    start_lon: startCoords.lon,
+                    end_lat: endCoords.lat,
+                    end_lon: endCoords.lon,
+                    ev_id: customEvId.trim() || undefined
+                })
+            });
+            const result = await response.json();
+            if (result.status === 'success') {
+                setStartCoords(null);
+                setEndCoords(null);
+                setCustomEvId('');
+            } else {
+                console.error("Failed to spawn EV:", result.message);
+                alert("Failed to spawn EV: " + result.message);
+            }
+        } catch (e) {
+            console.error("API error spawning EV:", e);
+        } finally {
+            setIsDispatching(false);
+        }
+    };
 
     // Toggle function mapping to the real-time isSystemActive state
     const toggleEvps = async () => {
@@ -146,9 +241,15 @@ export default function EvpsDashboard() {
                                                 ) : (
                                                     <span className="flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
                                                         <CheckCircle size={14} />
-                                                        CLEAR
+                                                        SECURE / PROCEEDING
                                                     </span>
                                                 )}
+                                            </div>
+                                        </td>
+                                        <td className="px-6 py-4">
+                                            <div className="flex items-center gap-1 text-slate-400 text-xs">
+                                                <MapPin size={12} />
+                                                {(ev as any).lat?.toFixed(4)}, {(ev as any).lon?.toFixed(4)}
                                             </div>
                                         </td>
                                     </tr>
@@ -158,6 +259,72 @@ export default function EvpsDashboard() {
                     </div>
                 )}
             </div>
+
+
+            {/* Dynamic EV Spawner Map */}
+            <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden mt-8">
+                <div className="p-5 border-b border-slate-800 flex items-center justify-between">
+                    <div>
+                        <h3 className="text-white font-semibold flex items-center gap-2">
+                            <MapPin size={18} className="text-indigo-400" />
+                            Dynamic EV Dispatch
+                        </h3>
+                        <p className="text-sm text-slate-400 mt-1">
+                            Click on the map to set Start (Green) and Destination (Red) points for a new Emergency Vehicle.
+                        </p>
+                    </div>
+                    <div className="flex gap-3 items-center">
+                        <input
+                            type="text"
+                            placeholder="Custom EV ID (Optional)"
+                            value={customEvId}
+                            onChange={(e) => setCustomEvId(e.target.value)}
+                            className="px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-sm text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500 transition-colors w-48"
+                        />
+                        {(startCoords || endCoords) && (
+                            <button
+                                onClick={() => { setStartCoords(null); setEndCoords(null); }}
+                                className="px-4 py-2 rounded-lg font-semibold text-sm transition-all text-slate-400 hover:text-white hover:bg-slate-800"
+                            >
+                                Clear
+                            </button>
+                        )}
+                        <button
+                            onClick={handleDispatch}
+                            disabled={!startCoords || !endCoords || isDispatching}
+                            className="px-4 py-2 rounded-lg font-semibold text-sm transition-all shadow-lg bg-indigo-600 text-white hover:bg-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                            {isDispatching ? 'Dispatching...' : 'Dispatch EV'}
+                        </button>
+                    </div>
+                </div>
+                <div className="h-[400px] w-full relative z-0">
+                    <MapContainer center={[centerLat, centerLon]} zoom={13} style={{ height: '100%', width: '100%' }}>
+                        <TileLayer
+                            url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
+                            attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>'
+                        />
+                        <MapClickHandler onMapClick={handleMapClick} />
+                        {startCoords && (
+                            <Marker position={[startCoords.lat, startCoords.lon]} icon={startIcon}>
+                                <Popup>Start Location</Popup>
+                            </Marker>
+                        )}
+                        {endCoords && (
+                            <Marker position={[endCoords.lat, endCoords.lon]} icon={endIcon}>
+                                <Popup>Destination</Popup>
+                            </Marker>
+                        )}
+                        {networkGeoJson && (
+                            <GeoJSON
+                                data={networkGeoJson}
+                                style={{ color: '#3b82f6', weight: 3, opacity: 0.6 }}
+                            />
+                        )}
+                    </MapContainer>
+                </div>
+            </div>
+
         </div>
     );
 }
