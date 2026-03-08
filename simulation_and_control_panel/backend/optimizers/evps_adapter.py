@@ -5,54 +5,39 @@ import numpy as np
 import pandas as pd
 import tensorflow as tf
 import pickle
-import asyncio
 import json
-import uvicorn
 import random
 from collections import deque
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
-from fastapi.middleware.cors import CORSMiddleware
 
-# --- CONFIGURATION ---
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-MODEL_PATH = os.path.join(BASE_DIR, "../models/saved/eta_predictor.h5")
-SCALER_PATH = os.path.join(BASE_DIR, "../data/scalers/eta_scaler.pkl")
-SAFETY_MODEL_PATH = os.path.join(BASE_DIR, "../models/saved/outcome_safety_classifier.pkl")
-SUMO_CONFIG = os.path.join(BASE_DIR, "../simulation/config/colombo_mega_scenario.sumocfg")
-
-# Initialize FastAPI
-app = FastAPI()
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-class GreenWaveController:
+class EVPSAdapter:
     def __init__(self): 
         self.ev_id = "EV_0" # The EV currently focused on the Mobile App
-        self.running = False
+        self.active = False # Controlled by dashboard toggle
+        self.ws_connections = set() # Controlled by driver app and dashboard
         
-        print("Loading AI Models...")
+        print("EVPS Adapter: Loading AI Models...")
+        current_dir = os.path.dirname(os.path.abspath(__file__))
+        project_root = os.path.abspath(os.path.join(current_dir, "../../../"))
+        
+        MODEL_PATH = os.path.join(project_root, "services/emergency_vehicle_preemption/models/saved/eta_predictor.h5")
+        SCALER_PATH = os.path.join(project_root, "services/emergency_vehicle_preemption/data/scalers/eta_scaler.pkl")
+        TARGET_SCALER_PATH = os.path.join(project_root, "services/emergency_vehicle_preemption/data/scalers/eta_target_scaler.pkl")
+        SAFETY_MODEL_PATH = os.path.join(project_root, "services/emergency_vehicle_preemption/models/saved/outcome_safety_classifier.pkl")
+
         try:
             self.model = tf.keras.models.load_model(MODEL_PATH)
             with open(SCALER_PATH, "rb") as f:
                 self.scaler = pickle.load(f)
             
-            # Load the new Target (ETA) Scaler
-            TARGET_SCALER_PATH = os.path.join(BASE_DIR, "../data/scalers/eta_target_scaler.pkl")
             with open(TARGET_SCALER_PATH, "rb") as f:
                 self.target_scaler = pickle.load(f)
 
             with open(SAFETY_MODEL_PATH, "rb") as f:
                 self.safety_model = pickle.load(f)
-            print("SUCCESS: All Models loaded.")
+            print("EVPS Adapter: SUCCESS - All Models loaded.")
         except Exception as e:
-            print(f"CRITICAL ERROR: Could not load models. {e}")
-            sys.exit(1)
+            print(f"EVPS Adapter: CRITICAL ERROR - Could not load models. Logic will run without predictions. {e}")
+            self.model = None
 
         self.sequence_length = 10
         self.alpha = 0.3
@@ -65,44 +50,46 @@ class GreenWaveController:
         # Ensures that once an EV wins and locks a light, it keeps it until it passes.
         self.active_override_tls_ids = {} 
 
-    def start_sumo(self):
-        sumo_cmd = ["sumo-gui", "-c", SUMO_CONFIG, "--start"]
-        traci.start(sumo_cmd)
-        self.running = True
-        print("Simulation Started.")
+    def set_websocket(self, ws):
+        self.ws_connections.add(ws)
+        print(f"EVPS Adapter: Client connected. Total clients: {len(self.ws_connections)}")
 
-    def stop_sumo(self):
+    def disconnect_websocket(self, ws):
+        self.ws_connections.discard(ws)
+        print(f"EVPS Adapter: Client disconnected. Total clients: {len(self.ws_connections)}")
+        # If dashboard didn't explicitly toggle EVPS on, we might wanna release? 
+        # But active state governs preemption.
+
+    def toggle_evps(self, enable: bool):
+        self.active = enable
+        print(f"EVPS Adapter: System {'Activated' if enable else 'Deactivated'} via Dashboard")
+        if not enable:
+            self._release_all()
+            self.fleet.clear()
+
+    def execute_step(self):
+        """Called by SimulationController every step"""
+        if not self.active:
+            self._broadcast_status(active=False)
+            return
+
         try:
-            traci.close()
-            self.running = False
-        except: pass
-
-    def simulation_step(self):
-        if not self.running: return None
-
-        try:
-            if traci.simulation.getMinExpectedNumber() <= 0:
-                self.stop_sumo()
-                return None
-
-            traci.simulationStep()
-            
             # --- 1. GLOBAL RADAR: Update state for ALL vehicles ---
             self._update_global_fleet_state()
             
-            # --- 2. THE ARBITER: Manage conflicts and preemption for ALL vehicles ---
-            self._manage_fleet_preemption()
+            if self.model:
+                # --- 2. THE ARBITER: Manage conflicts and preemption for ALL vehicles ---
+                self._manage_fleet_preemption()
 
             # --- 3. PRESENTATION: Return data only for the selected EV to the App ---
-            return self._build_status_packet()
+            self._broadcast_status(active=True)
 
         except Exception as e:
-            print(f"Sim Error: {e}")
-            return None
+            print(f"EVPS Sim Error: {e}")
 
     def switch_vehicle(self, new_ev_id):
-        """Called by Flutter App to change the UI Focus."""
-        print(f"UI Focus switched to {new_ev_id}")
+        """Called by Flutter App / WS to change the UI Focus."""
+        print(f"EVPS Adapter: UI Focus switched to {new_ev_id}")
         self.ev_id = new_ev_id
         try:
             traci.gui.trackVehicle("View #0", self.ev_id)
@@ -113,7 +100,25 @@ class GreenWaveController:
         """Called by Flutter App to dynamically change an EV's dispatch priority."""
         if target_ev_id in self.fleet:
             self.fleet[target_ev_id]["priority"] = int(new_priority)
-            print(f"Elevated {target_ev_id} to Priority Level {new_priority}")
+            print(f"EVPS Adapter: Elevated {target_ev_id} to Priority Level {new_priority}")
+
+    def _broadcast_status(self, active):
+        if not self.ws_connections: return
+
+        payload = self._build_status_packet()
+        if not active:
+            payload["active"] = False
+            
+        dead_connections = set()
+        for ws in self.ws_connections:
+            try:
+                ws.send(json.dumps(payload))
+            except Exception as e:
+                print(f"EVPS Adapter: Send Error: {e}")
+                dead_connections.add(ws)
+                
+        for dead_ws in dead_connections:
+            self.disconnect_websocket(dead_ws)
 
     # ==========================================
     # --- FLEET RADAR & STATE MANAGEMENT ---
@@ -139,19 +144,20 @@ class GreenWaveController:
                 }
             
             # Extract features for ETA Prediction
-            features = self._get_live_features(ev)
-            if features:
-                fleet_ev = self.fleet[ev]
-                fleet_ev["buffer"].append(features)
-                fleet_ev["speed"] = features[0]
-                
-                # Predict ETA if buffer is full
-                if len(fleet_ev["buffer"]) == self.sequence_length:
-                    raw_eta = self._predict_eta(ev)
-                    if fleet_ev["smoothed_eta"] is None: 
-                        fleet_ev["smoothed_eta"] = raw_eta
-                    else: 
-                        fleet_ev["smoothed_eta"] = (self.alpha * raw_eta) + ((1 - self.alpha) * fleet_ev["smoothed_eta"])
+            if self.model:
+                features = self._get_live_features(ev)
+                if features:
+                    fleet_ev = self.fleet[ev]
+                    fleet_ev["buffer"].append(features)
+                    fleet_ev["speed"] = features[0]
+                    
+                    # Predict ETA if buffer is full
+                    if len(fleet_ev["buffer"]) == self.sequence_length:
+                        raw_eta = self._predict_eta(ev)
+                        if fleet_ev["smoothed_eta"] is None: 
+                            fleet_ev["smoothed_eta"] = raw_eta
+                        else: 
+                            fleet_ev["smoothed_eta"] = (self.alpha * raw_eta) + ((1 - self.alpha) * fleet_ev["smoothed_eta"])
 
     # ==========================================
     # --- MULTI-EV PRIORITY ARBITER ---
@@ -249,6 +255,10 @@ class GreenWaveController:
                         print(f"⚠️ SAFETY GUARD: {ev} denied at {t_id} (Gridlock risk).")
                     break # Halt downstream preemption for this EV
 
+    def _release_all(self):
+        for old_id in list(self.active_override_tls_ids.keys()):
+            self._release_control(old_id)
+            
     def _release_control(self, tls_id):
         if tls_id in self.active_override_tls_ids:
             try: traci.trafficlight.setProgram(tls_id, "0")
@@ -355,13 +365,25 @@ class GreenWaveController:
     # --- PRESENTATION / API ---
     # ==========================================
     def _build_status_packet(self):
-        # We only send data for the UI-selected vehicle
+        # Build comprehensive fleet telemetry for the React Dashboard
+        fleet_telemetry = []
+        for v_id, v_data in self.fleet.items():
+            fleet_telemetry.append({
+                "id": v_id,
+                "speed": float(f"{v_data['speed'] * 3.6:.1f}"),
+                "priority": v_data["priority"],
+                "safety_blocked": v_data["safety_blocked"],
+            })
+
+        # Send empty driver data if the driver app focus is not in fleet
         if self.ev_id not in self.fleet:
             return {
-                "type": "status", "ev_id": self.ev_id, "active": False,
+                "type": "status", "ev_id": self.ev_id, "active": self.active,
                 "eta": 0.0, "speed": 0.0, "lat": 0.0, "lon": 0.0,
                 "priority": 1, "green_wave_active": False, "safety_blocked": False,
-                "tls_id": "", "active_junctions": []
+                "tls_id": "", "active_junctions": [],
+                "active_fleet": list(self.fleet.keys()),
+                "fleet": fleet_telemetry
             }
 
         ev_data = self.fleet[self.ev_id]
@@ -416,7 +438,7 @@ class GreenWaveController:
             return {
                 "type": "status",
                 "ev_id": self.ev_id,
-                "active": True,
+                "active": self.active,
                 "eta": float(f"{ev_data['smoothed_eta']:.1f}") if ev_data['smoothed_eta'] else 0.0,
                 "speed": float(f"{speed * 3.6:.1f}"),
                 "dist_to_tls": float(f"{dist_to_tls:.1f}"),
@@ -426,49 +448,9 @@ class GreenWaveController:
                 "green_wave_active": is_green_wave,
                 "safety_blocked": ev_data["safety_blocked"],
                 "tls_id": display_tls_id,
-                "active_junctions": active_junctions
+                "active_junctions": active_junctions,
+                "active_fleet": list(self.fleet.keys()),
+                "fleet": fleet_telemetry
             }
         except:
-            return {"type": "status", "ev_id": self.ev_id, "active": False}
-
-# --- GLOBAL INSTANCE ---
-controller = GreenWaveController()
-
-# --- WEBSOCKET HANDLER ---
-@app.websocket("/ws")
-async def websocket_endpoint(websocket: WebSocket):
-    await websocket.accept()
-    print("Flutter Client Connected!")
-    
-    if not controller.running:
-        controller.start_sumo()
-
-    try:
-        while True:
-            status = controller.simulation_step()
-            if status:
-                await websocket.send_text(json.dumps(status))
-            
-            try:
-                data = await asyncio.wait_for(websocket.receive_text(), timeout=0.05)
-                message = json.loads(data)
-                
-                if message["type"] == "switch_ev":
-                    controller.switch_vehicle(message["ev_id"])
-                elif message["type"] == "set_priority":
-                    # NEW: Flutter app can dictate priority level dynamically
-                    controller.set_ev_priority(message["ev_id"], message["priority"])
-                    
-            except asyncio.TimeoutError:
-                pass 
-            
-            await asyncio.sleep(0.1)
-            
-    except WebSocketDisconnect:
-        print("Flutter Client Disconnected")
-        controller.stop_sumo()
-    except Exception as e:
-        print(f"Socket Error: {e}")
-
-if __name__ == "__main__":
-    uvicorn.run(app, host="0.0.0.0", port=8001)
+            return {"type": "status", "ev_id": self.ev_id, "active": self.active, "active_fleet": list(self.fleet.keys()), "fleet": fleet_telemetry}

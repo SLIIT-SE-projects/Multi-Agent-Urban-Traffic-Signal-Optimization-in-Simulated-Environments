@@ -16,13 +16,18 @@ class SimConfig:
     MIN_GREEN_TIME = 5 # Safety constraint
 
 class GraphConfig:
-    NUM_SIGNAL_PHASES = 3  # Fixed to 3 based on your map
-    INTERSECTION_INPUT_DIM = NUM_SIGNAL_PHASES + 1  # Phases + Time feature
+    NUM_ACTIONS = 2
+    NUM_SIGNAL_PHASES = 4  # Fixed to 3 based on your map
+    # [UPDATE]: Phases + time_to_switch + phase_duration
+    INTERSECTION_INPUT_DIM = NUM_SIGNAL_PHASES + 2  
     LANE_INPUT_DIM = 3     # Queue + wait + Speed
+
+    # [NEW] Add Edge Input Dimension for physical road properties
+    EDGE_INPUT_DIM = 2     # Length, Speed Limit
 
 class ModelConfig:
     NUM_HEADS = 2      # For GATConv
-    DROPOUT_RATE = 0.3 # Uncertainty Mechanism
+    DROPOUT_RATE = 0.15 # Uncertainty Mechanism
     USE_GRU = True     # Recurrent Wrapper
 
 class TrainConfig:
@@ -30,24 +35,24 @@ class TrainConfig:
     STEPS_TO_COLLECT = 3600  # 2 hours of simulation data
 
     # SSL TRAINING SETTINGS
-    SSL_EPOCHS = 10
-    HIDDEN_DIM = 32
+    SSL_EPOCHS = 100
+    HIDDEN_DIM = 64            # Up from 32 — needed for 2-layer GNN
     SSL_LEARNING_RATE = 0.001
     TRAIN_SPLIT = 0.8
 
     # MARL TRAINING SETTINGS
-    MARL_EPISODES = 100
-    MARL_STEPS_PER_EPISODE = 500
-    MARL_LEARNING_RATE = 5e-5 
+    MARL_EPISODES = 300
+    MARL_STEPS_PER_EPISODE = 1000
+    MARL_LEARNING_RATE = 1e-4
     ACTION_INTERVAL = 15    
     MARL_GAMMA = 0.99
     MARL_TESTING_EPISODES = 10  
 
     # PPO HYPERPARAMETERS 
-    PPO_EPOCHS = 4        # How many times to train on the same batch
+    PPO_EPOCHS = 6        # How many times to train on the same batch
     GAE_LAMBDA = 0.95     # Generalized Advantage Estimation smoothing
-    PPO_EPSILON = 0.2     # Clipping range 
-    ENTROPY_COEF = 0.05   # Bonus for exploration
+    PPO_EPSILON = 0.15     # Clipping range 
+    ENTROPY_COEF = 0.08   # Bonus for exploration
     VALUE_LOSS_COEF = 0.5 # Weight of the Critic's loss
 
     # Epsilon Greedy
@@ -59,9 +64,17 @@ class TrainConfig:
     W_QUEUE = 0.8
     W_WAIT = 0.5
 
+    # LR Scheduler
+    LR_STEP_SIZE = 80
+    LR_GAMMA = 0.6
+
+    # Curriculum
+    EASY_UNTIL_EPISODE = 30
+    MEDIUM_UNTIL_EPISODE = 100
+
     # INFERENCE & SAFETY
     UNCERTAINTY_THRESHOLD = 0.05
-    MC_SAMPLES = 30
+    MC_SAMPLES = 20
 
 class FileConfig:
     EXPERIMENTS_FOLDER = os.path.join(PROJECT_ROOT, "experiments")

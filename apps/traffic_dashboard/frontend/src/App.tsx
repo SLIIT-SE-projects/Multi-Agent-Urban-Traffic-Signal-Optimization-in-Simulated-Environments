@@ -8,13 +8,15 @@ import {
   Network,
   Search,
   Bell,
-  ChevronRight
+  ChevronRight,
+  Siren
 } from 'lucide-react';
 
 // Modules
 import GNNDashboard from './modules/gnn/GNNDashboard';
 import { MPCDashboard } from './modules/mpc/MPCDashboard';
 import SystemOverview from './modules/overview/SystemOverview';
+import EvpsDashboard from './modules/evps/EvpsDashboard';
 
 // --- 1. SIDEBAR COMPONENT (Ported from Code 1) ---
 const Sidebar = () => (
@@ -38,6 +40,7 @@ const Sidebar = () => (
       <SidebarItem to="/overview" icon={<LayoutDashboard size={18} />} label="System Overview" />
       <SidebarItem to="/gnn" icon={<Cpu size={18} />} label="GNN Optimizer" />
       <SidebarItem to="/mpc" icon={<Activity size={18} />} label="MPC Control" />
+      <SidebarItem to="/evps" icon={<Siren size={18} />} label="EVPS View" />
 
       <p className="px-3 text-xs font-semibold text-slate-500 uppercase tracking-wider mt-8 mb-2">
         Settings
@@ -114,6 +117,8 @@ export default function App() {
               <Route path="/gnn/*" element={<GNNDashboard />} />
 
               <Route path="/mpc" element={<MPCDashboard />} />
+              
+              <Route path="/evps" element={<EvpsDashboard />} />
 
               <Route path="/config" element={
                 <div className="p-10 border-2 border-dashed border-slate-800 rounded-2xl bg-slate-900/20 text-center">

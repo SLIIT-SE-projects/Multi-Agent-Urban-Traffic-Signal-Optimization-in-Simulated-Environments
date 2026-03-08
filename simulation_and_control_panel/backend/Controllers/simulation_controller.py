@@ -16,12 +16,12 @@ else:
 
 
 class SimulationController:
-    def __init__(self, config_file, socketio_instance=None, use_gui=True, step_delay=0.1, green_wave_controller=None):
+    def __init__(self, config_file, socketio_instance=None, use_gui=True, step_delay=0.1, evps_adapter=None):
         self.socketio = socketio_instance
         self.config_file = config_file
         self.use_gui = use_gui
         self.default_step_delay = step_delay
-        self.green_wave_controller = green_wave_controller
+        self.evps_adapter = evps_adapter
         self.is_running = False
         self.is_paused = False
         self.current_step = 0
@@ -188,6 +188,51 @@ class SimulationController:
             print(f"❌ Error parsing topology: {e}")
             return {"error": str(e)}
 
+    def _apply_gnn_binary_actions(self, actions):
+        """
+        Applies GNN binary keep/switch actions.
+        action=0: keep current phase (do nothing)
+        action=1: advance to next green phase with yellow transition
+        Matches apply_actions_unified() from training — must stay identical.
+        """
+        for tls_id, action_val in actions.items():
+            try:
+                if int(action_val) == 0:
+                    continue  # KEEP: do nothing
+
+                # SWITCH: advance to next green phase
+                if tls_id in self.pending_switches:
+                    continue  # Already transitioning
+
+                current_phase = traci.trafficlight.getPhase(tls_id)
+                next_green = self._get_next_green_phase(current_phase)
+
+                if next_green == current_phase:
+                    continue  # Already on target
+
+                yellow_phase = self._get_yellow_phase(tls_id, current_phase)
+
+                if yellow_phase == current_phase:
+                    self.pending_switches[tls_id] = next_green
+                    self.yellow_timers[tls_id] = 1
+                else:
+                    traci.trafficlight.setPhase(tls_id, yellow_phase)
+                    self.pending_switches[tls_id] = next_green
+                    self.yellow_timers[tls_id] = self.YELLOW_DURATION
+
+            except Exception as e:
+                print(f"Error applying GNN action to {tls_id}: {e}")
+
+    def _get_next_green_phase(self, current_phase, total_phases=4):
+        """
+        Advances to next green phase, skipping yellow phases.
+        Matches get_next_green_phase() from training exactly.
+        """
+        next_phase = (current_phase + 1) % total_phases
+        if next_phase % 2 != 0:  # odd phases are yellow in your SUMO setup
+            next_phase = (next_phase + 1) % total_phases
+        return next_phase
+
     def load_optimizer(self, model_type="gnn"):
         """Load the AI model with the CURRENT simulation map"""
         print(f"🔌 Loading {model_type.upper()} Optimizer...")
@@ -265,7 +310,10 @@ class SimulationController:
                     print(f"🚦 {opt_name} Step: {self.current_step} | Max Queue: {max_queue} veh | Avg Speed: {avg_speed:.2f} m/s | Total Wait: {total_waiting:.1f} s")
                     
                     actions = self.optimizer.predict(snapshot)
-                    self._apply_ai_actions(actions)
+                    if getattr(self.optimizer, 'is_binary_action', False):
+                        self._apply_gnn_binary_actions(actions)
+                    else:
+                        self._apply_ai_actions(actions)
                     self.last_action_step = self.current_step
                 except traci.exceptions.FatalTraCIError:
                     print("Simulation ended by SUMO.")
@@ -304,9 +352,9 @@ class SimulationController:
         # 3.5. DYNAMIC FLOW INJECTION
         self._inject_flow_vehicles()
 
-        # 3.6. GREEN WAVE LOGIC
-        if self.green_wave_controller:
-            self.green_wave_controller.execute_step()
+        # 3.6. EVPS AI LOGIC
+        if self.evps_adapter:
+            self.evps_adapter.execute_step()
 
         # 4. DATA BROADCAST (Optimized)
         if self.socketio:
