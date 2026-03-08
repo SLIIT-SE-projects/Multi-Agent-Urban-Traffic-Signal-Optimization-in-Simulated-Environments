@@ -4,6 +4,7 @@ import { WS_BASE_URL, ENDPOINTS } from '../../../config';
 export interface GnnPerformanceMetrics {
     perNodeLatencyMs: Record<string, number>;
     perNodeUncertainty: Record<string, number>;
+    layerActivations?: Record<string, Record<string, number>>;
     uncertaintyScore: number;
 }
 

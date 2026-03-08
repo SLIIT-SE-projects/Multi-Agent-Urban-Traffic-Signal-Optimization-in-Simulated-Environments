@@ -1,11 +1,12 @@
 import { useState } from 'react';
-import { Activity, Sliders, FileText, Square, Play, Share2 } from 'lucide-react';
+import { Activity, Sliders, FileText, Square, Play, Share2, Layers } from 'lucide-react';
 
 import { useTrafficSocket } from './hooks/useTrafficSocket';
 import GnnMonitorTab from './components/GnnMonitorTab';
 import GnnConfigTab from './components/GnnConfigTab';
 import GnnGraphTab from './components/GnnGraphTab';
 import GnnGraphStateTab from './components/GnnGraphStateTab';
+import GnnMessagePassingTab from './components/GnnMessagePassingTab';
 import SystemHealthFooter from './components/SystemHealthFooter';
 
 export default function GNNDashboard() {
@@ -49,6 +50,7 @@ export default function GNNDashboard() {
       <div className="flex border-b border-slate-800 mb-6">
         {[
           { id: 'monitor', label: 'Real-time Monitor', icon: Activity },
+          { id: 'passing', label: 'Message Passing', icon: Layers },
           { id: 'state', label: 'Graph State', icon: FileText },
           { id: 'graph', label: 'Network Graph', icon: Share2 },
           { id: 'config', label: 'Model Configuration', icon: Sliders },
@@ -69,6 +71,7 @@ export default function GNNDashboard() {
 
       <div className={`flex-1 pr-2 scrollbar-thin scrollbar-thumb-slate-800 scrollbar-track-transparent ${activeSubTab === 'graph' ? 'overflow-hidden' : 'overflow-y-auto'}`}>
         {activeSubTab === 'monitor' && <GnnMonitorTab socketData={socketData} isRunning={isRunning} />}
+        {activeSubTab === 'passing' && <GnnMessagePassingTab socketData={socketData} />}
         {activeSubTab === 'state' && <GnnGraphStateTab socketData={socketData} />}
         {activeSubTab === 'graph' && <GnnGraphTab socketData={socketData} />}
         {activeSubTab === 'config' && <GnnConfigTab />}

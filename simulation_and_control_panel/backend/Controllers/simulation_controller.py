@@ -373,7 +373,9 @@ class SimulationController:
                 if self.optimization_enabled and self.optimizer and hasattr(self.optimizer, 'get_telemetry'):
                     opt_telemetry = self.optimizer.get_telemetry()
                 
-                print(f"DEBUG Emitter: Telemetry payload contains: {list(opt_telemetry.keys()) if opt_telemetry else 'EMPTY'}")
+                if opt_telemetry:
+                    print(f"DEBUG Emitter: Telemetry payload contains: {list(opt_telemetry.keys())}")
+                    
                 self.socketio.emit('simulation_step', {
                     'step': self.current_step,
                     'lanes': snapshot['lanes'],

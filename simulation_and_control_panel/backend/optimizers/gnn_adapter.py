@@ -108,118 +108,139 @@ class GNNTrafficOptimizer:
         self.node_ids = list(self.engine.graph_builder.tls_map.keys())
         self.latest_telemetry = {
             "perNodeLatencyMs": {node_id: 0.0 for node_id in self.node_ids},
-            "uncertaintyScore": 0.0
+            "uncertaintyScore": 0.0,
+            "perNodeUncertainty": {node_id: 0.0 for node_id in self.node_ids},
+            "layerActivations": {'INPUT': {}, 'CONTEXT': {}, 'TARGET': {}, 'OUTPUT': {}}
         }
 
     def predict(self, raw_sumo_data):
-        start_time = time.time()
-        # 1. Data Prep
-        data = self.engine.graph_builder.create_hetero_data(raw_sumo_data)
-        num_intersections = data['intersection'].x.shape[0]
-        dynamic_node_ids = list(self.engine.graph_builder.tls_map.keys())
-        
-        # ---------------------------------------------------------
-        # [START] VECTORIZED UNCERTAINTY LOGIC
-        # ---------------------------------------------------------
-        self.engine.model.mc_dropout.enable_mc_dropout()
-        num_samples = 20
-
-        # Duplicate the graph 20 times into a single Mega-Graph batch
-        batched_data = Batch.from_data_list([data] * num_samples)
-
-        # We must also duplicate the GRU hidden state to match the batch size
-        if self.hidden_state is not None:
-            batched_hidden = self.hidden_state.repeat(num_samples, 1)
-        else:
-            batched_hidden = None
-
-        # Execute all 20 samples in ONE SINGLE forward pass
-        with torch.no_grad():
-            batched_logits, _, _ = self.engine.model(
-                batched_data.x_dict, 
-                batched_data.edge_index_dict, 
-                batched_hidden,
-                batched_data.edge_attr_dict
-            )
+        try:
+            start_time = time.time()
+            # 1. Data Prep
+            data = self.engine.graph_builder.create_hetero_data(raw_sumo_data)
+            num_intersections = data['intersection'].x.shape[0]
+            dynamic_node_ids = list(self.engine.graph_builder.tls_map.keys())
             
-            # Convert Logits to Probabilities
-            batched_probs = F.softmax(batched_logits, dim=1)
+            # ---------------------------------------------------------
+            # [START] VECTORIZED UNCERTAINTY LOGIC
+            # ---------------------------------------------------------
+            self.engine.model.mc_dropout.enable_mc_dropout()
+            num_samples = 20
+
+            # Duplicate the graph 20 times into a single Mega-Graph batch
+            batched_data = Batch.from_data_list([data] * num_samples)
+
+            # We must also duplicate the GRU hidden state to match the batch size
+            if self.hidden_state is not None:
+                batched_hidden = self.hidden_state.repeat(num_samples, 1)
+            else:
+                batched_hidden = None
+
+            # Execute all 20 samples in ONE SINGLE forward pass
+            with torch.no_grad():
+                batched_logits, _, _, _ = self.engine.model(
+                    batched_data.x_dict, 
+                    batched_data.edge_index_dict, 
+                    batched_hidden,
+                    batched_data.edge_attr_dict
+                )
+                
+                # Convert Logits to Probabilities
+                batched_probs = F.softmax(batched_logits, dim=1)
+                
+                # Reshape back to [Samples, Intersections, Actions]
+                # PyTorch Geometric batches nodes sequentially, so reshaping works perfectly
+                stacked_probs = batched_probs.view(num_samples, num_intersections, -1)
+
+            # Calculate Statistics instantly using matrix math
+            mean_probs = stacked_probs.mean(dim=0)          # Shape: [Intersections, Actions]
+            std_probs = stacked_probs.std(dim=0)            # Shape: [Intersections, Actions]
             
-            # Reshape back to [Samples, Intersections, Actions]
-            # PyTorch Geometric batches nodes sequentially, so reshaping works perfectly
-            stacked_probs = batched_probs.view(num_samples, num_intersections, -1)
-
-        # Calculate Statistics instantly using matrix math
-        mean_probs = stacked_probs.mean(dim=0)          # Shape: [Intersections, Actions]
-        std_probs = stacked_probs.std(dim=0)            # Shape: [Intersections, Actions]
-        
-        # 1. Calculate Global Uncertainty
-        global_uncertainty = std_probs.mean().item()
-        
-        # 2. Calculate Per-Node Uncertainty (Mean variance across actions for each node)
-        # std_probs shape is [num_intersections, num_actions]
-        node_uncertainties = std_probs.mean(dim=1).tolist()
-        
-        # 3. Map to Node IDs
-        per_node_unc_dict = {
-            node_id: round(node_uncertainties[i], 5)
-            for i, node_id in enumerate(dynamic_node_ids)
-        }
-
-        self.engine.model.mc_dropout.disable_mc_dropout()
-
-        # Update actual state (Single Deterministic pass to step the GRU forward properly)
-        with torch.no_grad():
-            _, _, self.hidden_state = self.engine.model(
-                data.x_dict, 
-                data.edge_index_dict, 
-                self.hidden_state,
-                data.edge_attr_dict
-            )
-
-        print(f"📊 GNN Confidence | Uncertainty (Prob. StdDev): {global_uncertainty:.5f}")
-        
-        if global_uncertainty > 0.15: 
-             print("⚠️  High Model Uncertainty Detected!")
-             # TODO: We will trigger the Manual Override fallback here later
-
-        # ---------------------------------------------------------
-        # [END] VECTORIZED UNCERTAINTY LOGIC
-        # ---------------------------------------------------------
-        
-        # 3. Select Action from Mean Probabilities
-        chosen_phases = torch.argmax(mean_probs, dim=1).tolist()
-        
-        idx_to_id = {v: k for k, v in self.engine.graph_builder.tls_map.items()}
-        actions_dict = {}
-        
-        for idx, model_action in enumerate(chosen_phases):
-            if idx not in idx_to_id: continue
-            tls_id = idx_to_id[idx]
+            # 1. Calculate Global Uncertainty
+            global_uncertainty = std_probs.mean().item()
             
-            # model_action is already 0 (keep) or 1 (switch) from argmax of 2-class output
-            actions_dict[tls_id] = model_action  # 0=keep, 1=switch
+            # 2. Calculate Per-Node Uncertainty (Mean variance across actions for each node)
+            # std_probs shape is [num_intersections, num_actions]
+            node_uncertainties = std_probs.mean(dim=1).tolist()
             
-        # 1. Calculate the base latency per node
-        global_latency_ms = round((time.time() - start_time) * 1000, 2)
-        num_nodes = len(self.node_ids)
-        base_node_latency = global_latency_ms / num_nodes if num_nodes > 0 else 0.0
+            # 3. Map to Node IDs
+            per_node_unc_dict = {
+                node_id: round(node_uncertainties[i], 5)
+                for i, node_id in enumerate(dynamic_node_ids)
+            }
 
-        # 2. Simulate Realistic Per-Node Variance
-        # Add small random variation (+/- 10%) to the base for each node
-        per_node_latency = {}
-        for node_id in dynamic_node_ids:
-            variance = random.uniform(-0.1, 0.1)
-            per_node_latency[node_id] = round(max(1.0, base_node_latency * (1.0 + variance)), 2)
+            self.engine.model.mc_dropout.disable_mc_dropout()
 
-        # 3. Update the data payload
-        self.latest_telemetry = {
-            "perNodeLatencyMs": per_node_latency,
-            "uncertaintyScore": float(global_uncertainty),
-            "perNodeUncertainty": per_node_unc_dict
-        }
+            # Update actual state (Single Deterministic pass to step the GRU forward properly)
+            with torch.no_grad():
+                _, _, self.hidden_state, layer_activations = self.engine.model(
+                    data.x_dict, 
+                    data.edge_index_dict, 
+                    self.hidden_state,
+                    data.edge_attr_dict
+                )
+
+            print(f"📊 GNN Confidence | Uncertainty (Prob. StdDev): {global_uncertainty:.5f}")
             
-        return actions_dict
+            if global_uncertainty > 0.15: 
+                 print("⚠️  High Model Uncertainty Detected!")
+                 # TODO: We will trigger the Manual Override fallback here later
+
+            # ---------------------------------------------------------
+            # [END] VECTORIZED UNCERTAINTY LOGIC
+            # ---------------------------------------------------------
+            
+            # 3. Select Action from Mean Probabilities
+            chosen_phases = torch.argmax(mean_probs, dim=1).tolist()
+            
+            idx_to_id = {v: k for k, v in self.engine.graph_builder.tls_map.items()}
+            actions_dict = {}
+            
+            for idx, model_action in enumerate(chosen_phases):
+                if idx not in idx_to_id: continue
+                tls_id = idx_to_id[idx]
+                
+                # model_action is already 0 (keep) or 1 (switch) from argmax of 2-class output
+                actions_dict[tls_id] = model_action  # 0=keep, 1=switch
+                
+            # 1. Calculate the base latency per node
+            global_latency_ms = round((time.time() - start_time) * 1000, 2)
+            num_nodes = len(self.node_ids)
+            base_node_latency = global_latency_ms / num_nodes if num_nodes > 0 else 0.0
+
+            # 2. Simulate Realistic Per-Node Variance
+            # Add small random variation (+/- 10%) to the base for each node
+            per_node_latency = {}
+            for node_id in dynamic_node_ids:
+                variance = random.uniform(-0.1, 0.1)
+                per_node_latency[node_id] = round(max(1.0, base_node_latency * (1.0 + variance)), 2)
+
+            # 3. Process Layer Activations for Visualization
+            mapped_activations = {'INPUT': {}, 'CONTEXT': {}, 'TARGET': {}, 'OUTPUT': {}}
+            idx_to_str = {v: k for k, v in self.engine.graph_builder.tls_map.items()}
+            
+            for layer_name, node_feats in layer_activations.items():
+                for idx, feat_mag in enumerate(node_feats):
+                    if idx in idx_to_str:
+                        mapped_activations[layer_name][idx_to_str[idx]] = feat_mag
+
+            # 4. Update the data payload
+            self.latest_telemetry = {
+                "perNodeLatencyMs": per_node_latency,
+                "uncertaintyScore": float(global_uncertainty),
+                "perNodeUncertainty": per_node_unc_dict,
+                "layerActivations": mapped_activations
+            }
+                
+            return actions_dict
+
+        except Exception as e:
+            import traceback
+            print(f"\n" + "="*60)
+            print(f"❌ FATAL GNN PREDICT CRASH: {str(e)}")
+            traceback.print_exc()
+            print("="*60 + "\n")
+            return {}
 
     def get_telemetry(self):
         return self.latest_telemetry

@@ -63,14 +63,22 @@ class RecurrentHGAT(nn.Module):
                 dummy_attr = torch.zeros((num_edges, GraphConfig.EDGE_INPUT_DIM), dtype=torch.float32, device=device)
                 edge_attr_dict = {edge_type: dummy_attr}
 
+        layer_activations = {'INPUT': [], 'CONTEXT': [], 'TARGET': [], 'OUTPUT': []}
+
         # 1. Encode Raw Features
         x_dict_encoded = {}
         for node_type, x in x_dict.items():
             x_dict_encoded[node_type] = F.relu(self.encoder_dict[node_type](x))
+            
+        if 'intersection' in x_dict_encoded:
+            layer_activations['INPUT'] = [float(torch.norm(feat).item()) for feat in x_dict_encoded['intersection']]
 
         # 2. Spatial Processing: Layer 1 (Contextualize)
         # Calculates lane-to-lane flow and intersection coordination
         x_dict_context = self.conv1_context(x_dict_encoded, edge_index_dict)
+        
+        if 'intersection' in x_dict_context:
+            layer_activations['CONTEXT'] = [float(torch.norm(feat).item()) for feat in x_dict_context['intersection']]
         
         # Apply Residual Connection (Merge Context with Original Encodings)
         x_dict_res = {}
@@ -83,6 +91,9 @@ class RecurrentHGAT(nn.Module):
         # 3. Spatial Processing: Layer 2 (Target)
         # Feeds the contextually-aware lanes into the intersection via edge features
         x_dict_out = self.conv2_target(x_dict_res, edge_index_dict, edge_attr_dict=edge_attr_dict)
+        
+        if 'intersection' in x_dict_out:
+            layer_activations['TARGET'] = [float(torch.norm(feat).item()) for feat in x_dict_out['intersection']]
 
         # 4. Extract and process Intersection Node (DDP safe, all graphs utilized)
         intersection_embeddings = self.mc_dropout(F.relu(x_dict_out['intersection']))
@@ -97,4 +108,6 @@ class RecurrentHGAT(nn.Module):
         policy_input = self.mc_dropout(new_hidden_state)
         action_logits, state_value = self.policy_head(policy_input)
         
-        return action_logits, state_value, new_hidden_state
+        layer_activations['OUTPUT'] = [float(torch.norm(feat).item()) for feat in action_logits]
+        
+        return action_logits, state_value, new_hidden_state, layer_activations
