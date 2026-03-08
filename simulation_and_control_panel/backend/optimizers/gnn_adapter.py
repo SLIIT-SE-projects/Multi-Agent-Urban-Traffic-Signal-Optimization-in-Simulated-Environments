@@ -116,6 +116,7 @@ class GNNTrafficOptimizer:
         # 1. Data Prep
         data = self.engine.graph_builder.create_hetero_data(raw_sumo_data)
         num_intersections = data['intersection'].x.shape[0]
+        dynamic_node_ids = list(self.engine.graph_builder.tls_map.keys())
         
         # ---------------------------------------------------------
         # [START] VECTORIZED UNCERTAINTY LOGIC
@@ -152,8 +153,18 @@ class GNNTrafficOptimizer:
         mean_probs = stacked_probs.mean(dim=0)          # Shape: [Intersections, Actions]
         std_probs = stacked_probs.std(dim=0)            # Shape: [Intersections, Actions]
         
-        # Global Uncertainty is the mean of the standard deviations
-        uncertainty_score = std_probs.mean().item()
+        # 1. Calculate Global Uncertainty
+        global_uncertainty = std_probs.mean().item()
+        
+        # 2. Calculate Per-Node Uncertainty (Mean variance across actions for each node)
+        # std_probs shape is [num_intersections, num_actions]
+        node_uncertainties = std_probs.mean(dim=1).tolist()
+        
+        # 3. Map to Node IDs
+        per_node_unc_dict = {
+            node_id: round(node_uncertainties[i], 5)
+            for i, node_id in enumerate(dynamic_node_ids)
+        }
 
         self.engine.model.mc_dropout.disable_mc_dropout()
 
@@ -166,9 +177,9 @@ class GNNTrafficOptimizer:
                 data.edge_attr_dict
             )
 
-        print(f"📊 GNN Confidence | Uncertainty (Prob. StdDev): {uncertainty_score:.5f}")
+        print(f"📊 GNN Confidence | Uncertainty (Prob. StdDev): {global_uncertainty:.5f}")
         
-        if uncertainty_score > 0.15: 
+        if global_uncertainty > 0.15: 
              print("⚠️  High Model Uncertainty Detected!")
              # TODO: We will trigger the Manual Override fallback here later
 
@@ -197,16 +208,15 @@ class GNNTrafficOptimizer:
         # 2. Simulate Realistic Per-Node Variance
         # Add small random variation (+/- 10%) to the base for each node
         per_node_latency = {}
-        for node_id in self.node_ids:
-            variance = random.uniform(-0.1, 0.1) # +/- 10%
-            # Ensure we don't go below a realistic minimum like 1ms or above the base too much
-            node_time = max(1.0, base_node_latency * (1.0 + variance)) 
-            per_node_latency[node_id] = round(node_time, 2)
+        for node_id in dynamic_node_ids:
+            variance = random.uniform(-0.1, 0.1)
+            per_node_latency[node_id] = round(max(1.0, base_node_latency * (1.0 + variance)), 2)
 
         # 3. Update the data payload
         self.latest_telemetry = {
             "perNodeLatencyMs": per_node_latency,
-            "uncertaintyScore": float(uncertainty_score)
+            "uncertaintyScore": float(global_uncertainty),
+            "perNodeUncertainty": per_node_unc_dict
         }
             
         return actions_dict

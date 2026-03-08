@@ -3,6 +3,7 @@ import { Activity, Car, Cpu, Brain } from 'lucide-react';
 import GnnStatCard from './GnnStatCard';
 import GnnChartCard from './GnnChartCard';
 import GnnRealTimeLatencyBarChart from './GnnRealTimeLatencyBarChart';
+import GnnRealTimeUncertaintyChart from './GnnRealTimeUncertaintyChart';
 import GnnActionLog from './GnnActionLog';
 import { DASHBOARD_API_URL } from '../../../config';
 
@@ -61,7 +62,7 @@ const GnnMonitorTab: React.FC<GnnMonitorTabProps> = ({ socketData, isRunning }) 
 
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 <GnnRealTimeLatencyBarChart socketData={socketData} />
-                <GnnChartCard title="Model Uncertainty Score" data={dataHistory} dataKey="gnn_telemetry.uncertaintyScore" color="text-amber-500" fillId="uncGrad" />
+                <GnnRealTimeUncertaintyChart socketData={socketData} />
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
