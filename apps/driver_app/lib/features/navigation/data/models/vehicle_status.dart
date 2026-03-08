@@ -8,6 +8,7 @@ class VehicleStatus {
   final String currentTls;
   final LatLng position;
   final List<Map<String, dynamic>> activeJunctions;
+  final List<String> activeFleet;
 
   VehicleStatus({
     required this.speed,
@@ -17,6 +18,7 @@ class VehicleStatus {
     required this.currentTls,
     required this.position,
     required this.activeJunctions,
+    required this.activeFleet,
   });
 
   factory VehicleStatus.empty() {
@@ -28,6 +30,7 @@ class VehicleStatus {
       currentTls: "",
       position: const LatLng(0, 0),
       activeJunctions: [],
+      activeFleet: [],
     );
   }
 
@@ -45,6 +48,11 @@ class VehicleStatus {
     double lat = json['lat'] != null ? (json['lat'] as num).toDouble() : 0.0;
     double lon = json['lon'] != null ? (json['lon'] as num).toDouble() : 0.0;
 
+    List<String> parsedFleet = [];
+    if (json.containsKey('active_fleet') && json['active_fleet'] != null) {
+      parsedFleet = List<String>.from(json['active_fleet']);
+    }
+
     return VehicleStatus(
       speed: json['speed'] != null ? (json['speed'] as num).toDouble() : 0.0,
       eta: json['eta'] != null ? (json['eta'] as num).toDouble() : 0.0,
@@ -53,6 +61,7 @@ class VehicleStatus {
       currentTls: json['tls_id'] ?? "",
       position: LatLng(lat, lon),
       activeJunctions: junctions,
+      activeFleet: parsedFleet,
     );
   }
 }
