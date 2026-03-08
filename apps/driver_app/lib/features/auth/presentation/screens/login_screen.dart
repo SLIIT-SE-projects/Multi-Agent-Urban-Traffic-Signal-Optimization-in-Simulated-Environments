@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import '../../../../core/constants/app_constants.dart';
 import '../../../../features/trip/presentation/screens/trip_setup_screen.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -29,12 +31,76 @@ class _LoginScreenState extends State<LoginScreen> {
     );
   }
 
+  Future<void> _showNetworkConfigDialog() async {
+    final prefs = await SharedPreferences.getInstance();
+    final currentIp = prefs.getString('serverIpAddress') ?? AppConstants.serverIpAddress;
+    final controller = TextEditingController(text: currentIp);
+
+    if (!mounted) return;
+
+    showDialog(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('Network Configuration'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text('Enter the IP address of the simulation server:'),
+              const SizedBox(height: 16),
+              TextField(
+                controller: controller,
+                decoration: const InputDecoration(
+                  labelText: 'Server IP Address',
+                  hintText: 'e.g., 10.0.2.2 or 192.168.1.100',
+                  border: const OutlineInputBorder(),
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('Cancel'),
+            ),
+            ElevatedButton(
+              onPressed: () async {
+                final newIp = controller.text.trim();
+                if (newIp.isNotEmpty) {
+                  await prefs.setString('serverIpAddress', newIp);
+                  AppConstants.serverIpAddress = newIp;
+                }
+                if (mounted) {
+                  Navigator.of(context).pop();
+                }
+              },
+              child: const Text('Save'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final primaryColor = theme.primaryColor;
 
     return Scaffold(
+      extendBodyBehindAppBar: true,
+      appBar: AppBar(
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.settings, color: Colors.black54),
+            onPressed: _showNetworkConfigDialog,
+            tooltip: 'Network Configuration',
+          ),
+          const SizedBox(width: 8),
+        ],
+      ),
       body: Container(
         decoration: BoxDecoration(
           gradient: LinearGradient(
