@@ -4,6 +4,9 @@ import '../../../../core/constants/app_constants.dart';
 import '../../../../core/widgets/app_drawer.dart';
 import '../../../../core/widgets/custom_floating_app_bar.dart';
 
+import '../../../navigation/data/models/vehicle_status.dart';
+import '../../../navigation/data/services/websocket_service.dart';
+
 class VehicleSelectScreen extends StatefulWidget {
   const VehicleSelectScreen({super.key});
 
@@ -12,49 +15,20 @@ class VehicleSelectScreen extends StatefulWidget {
 }
 
 class _VehicleSelectScreenState extends State<VehicleSelectScreen> {
-  // Mock data for vehicles
-  final List<Map<String, dynamic>> _vehicles = [
-    {
-      'id': 'EV_0',
-      'licensePlate': 'PJ-1788',
-      'type': 'Mini Ambulance',
-      'description': 'Capacity: 1 Patient\nFeatures: Basic Life Support, Compact Size, High Maneuverability.',
-      'status': 'Idle',
-    },
-    {
-      'id': 'EV_1',
-      'licensePlate': 'DAA-4433',
-      'type': 'Standard Ambulance',
-      'description': 'Capacity: 2 Patients\nFeatures: Advanced Life Support, Defibrillator, Oxygen Supply.',
-      'status': 'Active',
-    },
-    {
-      'id': 'EV_2',
-      'licensePlate': 'NB-9021',
-      'type': 'ICU Ambulance',
-      'description': 'Capacity: 1 Critical Patient\nFeatures: ICU Ventilator, Cardiac Monitor, Infusion Pumps.',
-      'status': 'Idle',
-    },
-    {
-      'id': 'EV_3',
-      'licensePlate': 'CC-1122',
-      'type': 'Rapid Response',
-      'description': 'Capacity: First Responder Team\nFeatures: Trauma Kits, AED, Fast Response Unit.',
-      'status': 'Maintenance',
-    },
-  ];
-
+  late WebSocketService _webSocketService;
   String? _selectedVehicleId;
   late final PageController _pageController;
 
   @override
   void initState() {
     super.initState();
+    _webSocketService = WebSocketService();
     _pageController = PageController(viewportFraction: 0.85);
   }
 
   @override
   void dispose() {
+    _webSocketService.dispose();
     _pageController.dispose();
     super.dispose();
   }
@@ -63,6 +37,8 @@ class _VehicleSelectScreenState extends State<VehicleSelectScreen> {
     setState(() {
       _selectedVehicleId = vehicleId;
     });
+    
+    _webSocketService.switchVehicle(vehicleId);
 
     ScaffoldMessenger.of(context).clearSnackBars();
     ScaffoldMessenger.of(context).showSnackBar(
@@ -114,12 +90,45 @@ class _VehicleSelectScreenState extends State<VehicleSelectScreen> {
             right: 0,
             bottom: 30, // Lifted from bottom
             height: 450, // Height of the card area
-            child: PageView.builder(
-              controller: _pageController,
-              itemCount: _vehicles.length,
-              itemBuilder: (context, index) {
-                final vehicle = _vehicles[index];
-                return _buildVehicleCard(vehicle);
+            child: StreamBuilder<VehicleStatus>(
+              stream: _webSocketService.vehicleStatusStream,
+              builder: (context, snapshot) {
+                if (!snapshot.hasData) {
+                  return const Center(child: CircularProgressIndicator());
+                }
+                final activeFleet = snapshot.data!.activeFleet;
+
+                if (activeFleet.isEmpty) {
+                  return Center(
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 24.0),
+                      child: Text(
+                        "No Emergency Vehicles currently detected in simulation.",
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          fontSize: 20,
+                          color: Colors.white,
+                          fontWeight: FontWeight.bold,
+                          shadows: [
+                            Shadow(
+                              offset: const Offset(0, 2),
+                              blurRadius: 4.0,
+                              color: Colors.black.withOpacity(0.5),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  );
+                }
+
+                return PageView.builder(
+                  controller: _pageController,
+                  itemCount: activeFleet.length,
+                  itemBuilder: (context, index) {
+                    return _buildVehicleCard(activeFleet[index]);
+                  },
+                );
               },
             ),
           ),
@@ -138,11 +147,10 @@ class _VehicleSelectScreenState extends State<VehicleSelectScreen> {
     );
   }
 
-  Widget _buildVehicleCard(Map<String, dynamic> vehicle) {
-    final String vehicleId = vehicle['id'];
-    final String licensePlate = vehicle['licensePlate'];
-    final String type = vehicle['type'];
-    final String description = vehicle['description'];
+  Widget _buildVehicleCard(String vehicleId) {
+    final String licensePlate = vehicleId;
+    final String type = 'Emergency Vehicle';
+    final String description = 'Live simulation unit currently operating on the map layer.';
     final bool isSelected = _selectedVehicleId == vehicleId;
     final primaryColor = const Color(0xFF2ECC71); // AppTheme primary
 
@@ -222,13 +230,33 @@ class _VehicleSelectScreenState extends State<VehicleSelectScreen> {
                       child: Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                           Text(
-                            vehicle['status'], 
-                            style: TextStyle(
-                              fontSize: 18, 
-                              fontWeight: FontWeight.bold,
-                              color: vehicle['status'] == 'Active' ? primaryColor : Colors.grey,
-                            ),
+                          Row(
+                            children: [
+                              Container(
+                                width: 12,
+                                height: 12,
+                                decoration: BoxDecoration(
+                                  shape: BoxShape.circle,
+                                  color: Colors.green,
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: Colors.green.withOpacity(0.6),
+                                      blurRadius: 8,
+                                      spreadRadius: 2,
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              const Text(
+                                "Online", 
+                                style: TextStyle(
+                                  fontSize: 18, 
+                                  fontWeight: FontWeight.bold,
+                                  color: Color(0xFF2ECC71),
+                                ),
+                              ),
+                            ],
                           ),
                           
                           // Selection Button (Checkmark)

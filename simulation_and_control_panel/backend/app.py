@@ -6,7 +6,7 @@ from Controllers.simulation_controller import SimulationController
 from Controllers.scenario_controller import ScenarioController
 from Controllers.data_controller import DataController
 from Controllers.state_controller import StateController
-from Controllers.green_wave_controller import GreenWaveController
+from optimizers.evps_adapter import EVPSAdapter
 from config import config
 from flask_socketio import SocketIO
 import os
@@ -25,14 +25,14 @@ CONFIG_FILE = os.path.join(BASE_DIR, "..", "scenarios", "grid3x3", "grid3x3.sumo
 # CONFIG_FILE = os.path.join(BASE_DIR, "..", "..", "services", "emergency_vehicle_preemption", "simulation", "config", "katunayake.sumocfg")
 
 # Initialize controllers
-green_wave_controller = GreenWaveController(use_gui=config.USE_GUI)
+evps_adapter = EVPSAdapter()
 
 sim_controller = SimulationController(
     CONFIG_FILE, 
     use_gui=config.USE_GUI,
     step_delay=config.STEP_DELAY,
     socketio_instance=socketio,
-    green_wave_controller=green_wave_controller
+    evps_adapter=evps_adapter
 )
 
 data_controller = DataController(sim_controller)
@@ -44,7 +44,7 @@ state_controller = StateController(sim_controller, data_controller)
 # ============================================================================
 @sock.route('/ws')
 def green_wave_ws(ws):
-    green_wave_controller.set_websocket(ws)
+    evps_adapter.set_websocket(ws)
     try:
         while True:
             data = ws.receive()
@@ -52,13 +52,15 @@ def green_wave_ws(ws):
                 try:
                     message = json.loads(data)
                     if message.get("type") == "switch_ev":
-                        green_wave_controller.switch_vehicle(message.get("ev_id"))
+                        evps_adapter.switch_vehicle(message.get("ev_id"))
+                    elif message.get("type") == "set_priority":
+                        evps_adapter.set_ev_priority(message.get("ev_id"), message.get("priority"))
                 except:
                     pass
     except Exception as e:
         print(f"WS Error: {e}")
     finally:
-        green_wave_controller.disconnect_websocket()
+        evps_adapter.disconnect_websocket(ws)
 
 
 # ============================================================================
@@ -280,7 +282,12 @@ def unload_optimizer():
     result = sim_controller.unload_optimizer()
     return jsonify(result)
 
-
+@app.route('/api/evps/toggle', methods=['POST'])
+def toggle_evps():
+    data = request.get_json(silent=True) or {}
+    enable = data.get('enable', False)
+    evps_adapter.toggle_evps(bool(enable))
+    return jsonify({"status": "success", "evps_enabled": bool(enable)})
 
 @app.route('/api/simulation/topology', methods=['GET'])
 def get_topology():

@@ -115,11 +115,13 @@ class _DriverDashboardState extends State<DriverDashboard> {
                             color: Colors.black87,
                             fontWeight: FontWeight.bold,
                           ),
-                          items: List.generate(50, (index) => "EV_$index")
-                              .map((id) => DropdownMenuItem(
-                                    value: id,
-                                    child: Text(id),
-                                  ))
+                          items: [
+                            ..._status.activeFleet,
+                            if (!_status.activeFleet.contains(currentEvId)) currentEvId,
+                          ].map((id) => DropdownMenuItem(
+                                value: id,
+                                child: Text(!_status.activeFleet.contains(id) ? "$id (Offline)" : id),
+                              ))
                               .toList(),
                           onChanged: (val) {
                             if (val != null) _switchVehicle(val);
