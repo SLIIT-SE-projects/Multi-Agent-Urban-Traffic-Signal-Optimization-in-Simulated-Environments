@@ -50,23 +50,29 @@ class _DriverDashboardState extends State<DriverDashboard> {
     return Scaffold(
       extendBodyBehindAppBar: true,
       drawer: const AppDrawer(currentRoute: 'dashboard'),
-      body: StreamBuilder<VehicleStatus>(
-        stream: _webSocketService.vehicleStatusStream,
-        builder: (context, snapshot) {
-          if (snapshot.hasData) {
-            _status = snapshot.data!;
-            if (_status.position.latitude != 0 &&
-                _status.position.longitude != 0) {
-              hasData = true;
-              try {
-                _mapController.move(_status.position, 16.0);
-              } catch (e) {
-                // Controller might not be ready
-              }
-            }
-          }
+      body: StreamBuilder<bool>(
+        stream: _webSocketService.connectionState,
+        initialData: false,
+        builder: (context, connectionSnapshot) {
+          final isConnected = connectionSnapshot.data ?? false;
 
-          return Stack(
+          return StreamBuilder<VehicleStatus>(
+            stream: _webSocketService.vehicleStatusStream,
+            builder: (context, snapshot) {
+              if (snapshot.hasData) {
+                _status = snapshot.data!;
+                if (_status.position.latitude != 0 &&
+                    _status.position.longitude != 0) {
+                  hasData = true;
+                  try {
+                    _mapController.move(_status.position, 16.0);
+                  } catch (e) {
+                    // Controller might not be ready
+                  }
+                }
+              }
+
+              return Stack(
             children: [
               // 1. FULL SCREEN MAP
               Positioned.fill(
@@ -138,16 +144,19 @@ class _DriverDashboardState extends State<DriverDashboard> {
                 bottom: 30,
                 left: 16,
                 right: 16,
-                child: DashboardStatsPanel(
-                  speed: _status.speed,
-                  eta: _status.eta,
-                  distToTls: _status.distToTls,
-                  isGreenWaveActive: _status.isGreenWaveActive,
+                child: Opacity(
+                  opacity: isConnected ? 1.0 : 0.5,
+                  child: DashboardStatsPanel(
+                    speed: _status.speed,
+                    eta: _status.eta,
+                    distToTls: _status.distToTls,
+                    isGreenWaveActive: _status.isGreenWaveActive,
+                  ),
                 ),
               ),
 
               // 4. GREEN WAVE BANNER (Floating below top bar)
-              if (_status.isGreenWaveActive)
+              if (_status.isGreenWaveActive || !isConnected)
                 Positioned(
                   top: 120,
                   left: 16,
@@ -155,12 +164,15 @@ class _DriverDashboardState extends State<DriverDashboard> {
                   child: Center(
                     child: GreenWaveBanner(
                       activeJunctionsCount: _status.activeJunctions.length,
+                      isConnected: isConnected,
                     ),
                   ),
                 ),
             ],
           );
         },
+      );
+    },
       ),
     );
   }
