@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useEvpsSocket } from './hooks/useEvpsSocket';
-import { Activity, Zap, Car, AlertTriangle, CheckCircle, Play, Square, MapPin, Sun, Moon } from 'lucide-react';
+import { Activity, Zap, Car, AlertTriangle, CheckCircle, Play, Square, MapPin, Sun, Moon, Shuffle } from 'lucide-react';
 import { MapContainer, TileLayer, Marker, Popup, useMapEvents, GeoJSON } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
@@ -31,11 +31,14 @@ const BASE_URL = '/api';
 
 export default function EvpsDashboard() {
     const { isConnected, metrics } = useEvpsSocket();
+    const [toast, setToast] = useState<{ type: 'error' | 'success', message: string } | null>(null);
     const [startCoords, setStartCoords] = useState<{ lat: number, lon: number } | null>(null);
     const [endCoords, setEndCoords] = useState<{ lat: number, lon: number } | null>(null);
     const [isDispatching, setIsDispatching] = useState(false);
     const [networkGeoJson, setNetworkGeoJson] = useState<any>(null);
     const [customEvId, setCustomEvId] = useState('');
+    const [customRandomEvId, setCustomRandomEvId] = useState('');
+    const [isDispatchingRandom, setIsDispatchingRandom] = useState(false);
     const [isMapDark, setIsMapDark] = useState(true);
 
     // Fetch network topology GeoJSON on mount
@@ -56,6 +59,14 @@ export default function EvpsDashboard() {
 
         fetchNetworkGeojson();
     }, []);
+
+    // Clear toasts after 5 seconds
+    useEffect(() => {
+        if (toast) {
+            const timer = setTimeout(() => setToast(null), 5000);
+            return () => clearTimeout(timer);
+        }
+    }, [toast]);
 
     const { active_evs = 0, override_junctions = [], evps_status = 'Idle', fleet = [] } = metrics;
 
@@ -96,14 +107,40 @@ export default function EvpsDashboard() {
                 setStartCoords(null);
                 setEndCoords(null);
                 setCustomEvId('');
+                setToast({ type: 'success', message: result.message || 'Successfully dispatched EV.' });
             } else {
                 console.error("Failed to spawn EV:", result.message);
-                alert("Failed to spawn EV: " + result.message);
+                setToast({ type: 'error', message: "Dispatch failed: " + result.message });
             }
         } catch (e) {
             console.error("API error spawning EV:", e);
         } finally {
             setIsDispatching(false);
+        }
+    };
+
+    const handleRandomDispatch = async () => {
+        setIsDispatchingRandom(true);
+        try {
+            const response = await fetch(`${BASE_URL}/evps/spawn_random`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    ev_id: customRandomEvId.trim() || undefined
+                })
+            });
+            const result = await response.json();
+            if (result.status === 'success') {
+                setCustomRandomEvId('');
+                setToast({ type: 'success', message: result.message || 'Successfully dispatched random EV.' });
+            } else {
+                console.error("Failed to spawn random EV:", result.message);
+                setToast({ type: 'error', message: "Quick dispatch failed: " + result.message });
+            }
+        } catch (e) {
+            console.error("API error spawning random EV:", e);
+        } finally {
+            setIsDispatchingRandom(false);
         }
     };
 
@@ -139,7 +176,18 @@ export default function EvpsDashboard() {
     );
 
     return (
-        <div className="space-y-6 animate-in fade-in duration-500">
+        <div className="space-y-6 animate-in fade-in duration-500 relative">
+            {/* Custom Toast Notification */}
+            {toast && (
+                <div className={`fixed top-4 right-4 z-50 p-4 rounded-xl shadow-2xl flex items-center gap-3 transition-all duration-300 transform translate-y-0 opacity-100 ${toast.type === 'error' ? 'bg-rose-500/90 text-white' : 'bg-emerald-500/90 text-white'}`}>
+                    {toast.type === 'error' ? <AlertTriangle size={20} /> : <CheckCircle size={20} />}
+                    <p className="font-medium">{toast.message}</p>
+                    <button onClick={() => setToast(null)} className="ml-2 hover:opacity-75">
+                        <Square size={16} className="fill-current" />
+                    </button>
+                </div>
+            )}
+
             {/* Header / Status */}
             <div className="flex items-center justify-between">
                 <div>
@@ -261,6 +309,38 @@ export default function EvpsDashboard() {
                 )}
             </div>
 
+
+            {/* Quick Dispatch */}
+            <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden mt-8">
+                <div className="p-5 flex items-center justify-between">
+                    <div>
+                        <h3 className="text-white font-semibold flex items-center gap-2">
+                            <Shuffle size={18} className="text-indigo-400" />
+                            Quick Dispatch (Random Route)
+                        </h3>
+                        <p className="text-sm text-slate-400 mt-1">
+                            Instantly inject a new Emergency Vehicle on a random valid route.
+                        </p>
+                    </div>
+                    <div className="flex gap-3 items-center">
+                        <input
+                            type="text"
+                            placeholder="Custom EV ID (Optional)"
+                            value={customRandomEvId}
+                            onChange={(e) => setCustomRandomEvId(e.target.value)}
+                            className="px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-sm text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500 transition-colors w-48"
+                        />
+                        <button
+                            onClick={handleRandomDispatch}
+                            disabled={isDispatchingRandom}
+                            className="px-4 py-2 rounded-lg font-semibold text-sm transition-all shadow-lg bg-indigo-600 text-white hover:bg-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                        >
+                            <Zap size={16} />
+                            {isDispatchingRandom ? 'Dispatching...' : 'Dispatch Random EV'}
+                        </button>
+                    </div>
+                </div>
+            </div>
 
             {/* Dynamic EV Spawner Map */}
             <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden mt-8">

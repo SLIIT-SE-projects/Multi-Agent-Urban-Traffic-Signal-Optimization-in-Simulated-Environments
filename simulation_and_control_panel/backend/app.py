@@ -312,6 +312,13 @@ def spawn_ev_from_geo():
     result = evps_adapter.spawn_ev_from_geo(start_lon, start_lat, end_lon, end_lat, ev_id=ev_id)
     return jsonify(result)
 
+@app.route('/api/evps/spawn_random', methods=['POST'])
+def spawn_random_ev():
+    data = request.get_json(silent=True) or {}
+    ev_id = data.get('ev_id')
+    result = evps_adapter.spawn_random_ev(ev_id=ev_id)
+    return jsonify(result)
+
 @app.route('/api/simulation/topology', methods=['GET'])
 def get_topology():
     """Get the network topology (intersections, lanes, edges)"""

@@ -149,8 +149,76 @@ class EVPSAdapter:
                 "vehicle_id": veh_id
             }
         except Exception as e:
-            print(f"EVPS Adapter: Error spawning EV - {str(e)}")
-            return {"status": "error", "message": str(e)}
+            error_msg = str(e)
+            if "Invalid departure edge" in error_msg:
+                error_msg = "Selected road is restricted for emergency vehicles. Please select a different map location."
+            print(f"EVPS Adapter: Error spawning EV - {error_msg}")
+            return {"status": "error", "message": error_msg}
+
+
+    def spawn_random_ev(self, ev_id=None):
+        """Called via API to spawn a new EV dynamically on a random valid route."""
+        try:
+            edges = traci.edge.getIDList()
+            # Filter out internal edges
+            valid_edges = [e for e in edges if not e.startswith(":")]
+            
+            if not valid_edges:
+                return {"status": "error", "message": "No valid edges found in the network."}
+
+            import random
+            import time
+            max_attempts = 20
+            
+            for attempt in range(max_attempts):
+                start_edge = random.choice(valid_edges)
+                end_edge = random.choice(valid_edges)
+                if start_edge == end_edge:
+                    continue
+                
+                route_path = traci.simulation.findRoute(start_edge, end_edge)
+                if not route_path or not route_path.edges:
+                    continue
+                
+                timestamp = int(time.time() * 1000) + attempt
+                route_id = f"route_random_ev_{timestamp}"
+                
+                if ev_id and str(ev_id).strip():
+                    base_id = str(ev_id).strip()
+                    if not base_id.startswith("EV_"):
+                        veh_id = f"EV_{base_id}"
+                    else:
+                        veh_id = base_id
+                else:
+                    veh_id = f"EV_Random_{timestamp}"
+
+                # Add to TraCI Simulation
+                try:
+                    traci.route.add(route_id, route_path.edges)
+                    try:
+                        traci.vehicle.add(veh_id, route_id, typeID="ambulance", depart="now")
+                    except traci.exceptions.TraCIException:
+                        traci.vehicle.add(veh_id, route_id, depart="now")
+
+                    print(f"EVPS Adapter: Successfully spawned random EV {veh_id}")
+                    self.switch_vehicle(veh_id)
+                    
+                    return {
+                        "status": "success", 
+                        "message": f"Successfully dispatched {veh_id} on a random route.",
+                        "vehicle_id": veh_id
+                    }
+                except traci.exceptions.TraCIException:
+                    # Invalid departure edge for vehicle, remove route implicitly if failed, retry
+                    continue
+
+            return {"status": "error", "message": "Failed to find a valid random route and spawn vehicle after multiple attempts."}
+        except Exception as e:
+            error_msg = str(e)
+            if "Invalid departure edge" in error_msg:
+                error_msg = "Simulation automatically generated a restricted path. Please click Quick Dispatch again."
+            print(f"EVPS Adapter: Error spawning random EV - {error_msg}")
+            return {"status": "error", "message": error_msg}
 
 
     def _broadcast_status(self, active):
