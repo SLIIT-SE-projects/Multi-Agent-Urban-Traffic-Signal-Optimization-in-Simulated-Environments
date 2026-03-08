@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { Activity, Car, Zap, Clock, BarChart3, TrendingUp } from 'lucide-react';
 
@@ -9,23 +9,6 @@ export default function SystemOverview() {
     const [status, setStatus] = useState<any>(null);
     const [dataHistory, setDataHistory] = useState<any[]>([]);
     const [isConnected, setIsConnected] = useState(false);
-    const [evpsActive, setEvpsActive] = useState(false);
-
-    const toggleEvps = async () => {
-        try {
-            const newState = !evpsActive;
-            const res = await fetch(`${BASE_URL}/evps/toggle`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ enable: newState })
-            });
-            if (res.ok) {
-                setEvpsActive(newState);
-            }
-        } catch (e) {
-            console.error("Failed to toggle EVPS", e);
-        }
-    };
 
     useEffect(() => {
         const interval = setInterval(async () => {
@@ -97,12 +80,6 @@ export default function SystemOverview() {
                     <p className="text-slate-400 text-sm">Real-time baseline performance metrics across the network.</p>
                 </div>
                 <div className="flex items-center gap-3">
-                    <button
-                        onClick={toggleEvps}
-                        className={`px-4 py-2 rounded-lg font-medium text-sm transition-colors ${evpsActive ? 'bg-rose-500 hover:bg-rose-600 text-white' : 'bg-emerald-500 hover:bg-emerald-600 text-white'}`}
-                    >
-                        {evpsActive ? 'Stop EVPS' : 'Start EVPS'}
-                    </button>
                     <div className="flex items-center gap-3 bg-slate-900 border border-slate-800 px-4 py-2 rounded-lg">
                         <div className={`w-2 h-2 rounded-full ${status?.is_running ? 'bg-emerald-500 animate-pulse' : 'bg-slate-600'}`} />
                         <span className="text-sm font-mono text-slate-300">

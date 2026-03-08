@@ -60,7 +60,7 @@ def green_wave_ws(ws):
     except Exception as e:
         print(f"WS Error: {e}")
     finally:
-        evps_adapter.disconnect_websocket()
+        evps_adapter.disconnect_websocket(ws)
 
 
 # ============================================================================
