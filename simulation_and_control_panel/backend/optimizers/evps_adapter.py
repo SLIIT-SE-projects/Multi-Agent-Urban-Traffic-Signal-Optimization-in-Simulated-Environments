@@ -13,7 +13,7 @@ class EVPSAdapter:
     def __init__(self): 
         self.ev_id = "EV_0" # The EV currently focused on the Mobile App
         self.active = False # Controlled by dashboard toggle
-        self.ws_connection = None # Controlled by driver app
+        self.ws_connections = set() # Controlled by driver app and dashboard
         
         print("EVPS Adapter: Loading AI Models...")
         current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -51,12 +51,12 @@ class EVPSAdapter:
         self.active_override_tls_ids = {} 
 
     def set_websocket(self, ws):
-        self.ws_connection = ws
-        print("EVPS Adapter: Driver App Connected")
+        self.ws_connections.add(ws)
+        print(f"EVPS Adapter: Client connected. Total clients: {len(self.ws_connections)}")
 
-    def disconnect_websocket(self):
-        self.ws_connection = None
-        print("EVPS Adapter: Driver App Disconnected")
+    def disconnect_websocket(self, ws):
+        self.ws_connections.discard(ws)
+        print(f"EVPS Adapter: Client disconnected. Total clients: {len(self.ws_connections)}")
         # If dashboard didn't explicitly toggle EVPS on, we might wanna release? 
         # But active state governs preemption.
 
@@ -103,17 +103,22 @@ class EVPSAdapter:
             print(f"EVPS Adapter: Elevated {target_ev_id} to Priority Level {new_priority}")
 
     def _broadcast_status(self, active):
-        if not self.ws_connection: return
+        if not self.ws_connections: return
 
         payload = self._build_status_packet()
         if not active:
             payload["active"] = False
             
-        try:
-            self.ws_connection.send(json.dumps(payload))
-        except Exception as e:
-            print(f"EVPS Adapter: Send Error: {e}")
-            self.disconnect_websocket()
+        dead_connections = set()
+        for ws in self.ws_connections:
+            try:
+                ws.send(json.dumps(payload))
+            except Exception as e:
+                print(f"EVPS Adapter: Send Error: {e}")
+                dead_connections.add(ws)
+                
+        for dead_ws in dead_connections:
+            self.disconnect_websocket(dead_ws)
 
     # ==========================================
     # --- FLEET RADAR & STATE MANAGEMENT ---
@@ -360,13 +365,25 @@ class EVPSAdapter:
     # --- PRESENTATION / API ---
     # ==========================================
     def _build_status_packet(self):
-        # We only send data for the UI-selected vehicle
+        # Build comprehensive fleet telemetry for the React Dashboard
+        fleet_telemetry = []
+        for v_id, v_data in self.fleet.items():
+            fleet_telemetry.append({
+                "id": v_id,
+                "speed": float(f"{v_data['speed'] * 3.6:.1f}"),
+                "priority": v_data["priority"],
+                "safety_blocked": v_data["safety_blocked"],
+            })
+
+        # Send empty driver data if the driver app focus is not in fleet
         if self.ev_id not in self.fleet:
             return {
                 "type": "status", "ev_id": self.ev_id, "active": self.active,
                 "eta": 0.0, "speed": 0.0, "lat": 0.0, "lon": 0.0,
                 "priority": 1, "green_wave_active": False, "safety_blocked": False,
-                "tls_id": "", "active_junctions": []
+                "tls_id": "", "active_junctions": [],
+                "active_fleet": list(self.fleet.keys()),
+                "fleet": fleet_telemetry
             }
 
         ev_data = self.fleet[self.ev_id]
@@ -431,7 +448,9 @@ class EVPSAdapter:
                 "green_wave_active": is_green_wave,
                 "safety_blocked": ev_data["safety_blocked"],
                 "tls_id": display_tls_id,
-                "active_junctions": active_junctions
+                "active_junctions": active_junctions,
+                "active_fleet": list(self.fleet.keys()),
+                "fleet": fleet_telemetry
             }
         except:
-            return {"type": "status", "ev_id": self.ev_id, "active": self.active}
+            return {"type": "status", "ev_id": self.ev_id, "active": self.active, "active_fleet": list(self.fleet.keys()), "fleet": fleet_telemetry}
