@@ -257,21 +257,41 @@ class EVPSAdapter:
                 self.fleet[ev] = {
                     "buffer": deque(maxlen=self.sequence_length),
                     "smoothed_eta": None,
+                    "target_tls": None,
                     "priority": random.choice([1, 2]), # Default to Standard or Medium
                     "safety_blocked": False,
                     "speed": 0.0
                 }
             
+            fleet_ev = self.fleet[ev]
+            
+            # Check if target light has changed to reset buffer
+            try:
+                next_tls_info = traci.vehicle.getNextTLS(ev)
+                current_tls = next_tls_info[0][0] if next_tls_info else None
+            except:
+                current_tls = None
+
+            if fleet_ev["target_tls"] is not None and fleet_ev["target_tls"] != current_tls:
+                fleet_ev["buffer"].clear()
+                fleet_ev["smoothed_eta"] = None
+                print(f"[DEBUG ETA] {ev} target light changed (was {fleet_ev['target_tls']}, now {current_tls}). Flushed buffer.")
+            
+            fleet_ev["target_tls"] = current_tls
+
             # Extract features for ETA Prediction
             if self.model:
                 features = self._get_live_features(ev)
                 if features:
-                    fleet_ev = self.fleet[ev]
                     fleet_ev["buffer"].append(features)
                     fleet_ev["speed"] = features[0]
+                    current_dist = features[2]
                     
+                    if current_tls is None or current_dist < 15.0:
+                        fleet_ev["smoothed_eta"] = 0.0
+                        print(f"[DEBUG ETA] {ev} bypassed AI. Dist: {current_dist:.1f}m, TLS: {current_tls}. Forced ETA to 0.0")
                     # Predict ETA if buffer is full
-                    if len(fleet_ev["buffer"]) == self.sequence_length:
+                    elif len(fleet_ev["buffer"]) == self.sequence_length:
                         raw_eta = self._predict_eta(ev)
                         if fleet_ev["smoothed_eta"] is None: 
                             fleet_ev["smoothed_eta"] = raw_eta
@@ -446,7 +466,12 @@ class EVPSAdapter:
             accel = traci.vehicle.getAcceleration(ev_id)
             lane_id = traci.vehicle.getLaneID(ev_id)
             pos = traci.vehicle.getLanePosition(ev_id)
-            try: dist = traci.lane.getLength(lane_id) - pos
+            try: 
+                tls_info = traci.vehicle.getNextTLS(ev_id)
+                if tls_info:
+                    dist = tls_info[0][2]
+                else:
+                    dist = traci.lane.getLength(lane_id) - pos
             except: dist = 0
             queue = traci.lane.getLastStepHaltingNumber(lane_id)
             leader = traci.vehicle.getLeader(ev_id, 200)
@@ -466,7 +491,21 @@ class EVPSAdapter:
             scaled[i] = self.scaler.transform(step_df)[0]
         input_data = scaled.reshape(1, self.sequence_length, 6)
         normalized_eta = self.model.predict(input_data, verbose=0)
-        return self.target_scaler.inverse_transform(normalized_eta)[0][0]
+        unscaled_eta = float(self.target_scaler.inverse_transform(normalized_eta.reshape(-1, 1))[0][0])
+        
+        # Physical bounds sanity check
+        current_features = raw_sequence[-1]
+        dist = current_features[2]
+        
+        # Prevent negative ETA, bound minimum to travel time at max speed (e.g., 25m/s = 90km/h)
+        min_eta = max(0.0, dist / 25.0) 
+        # Cap max ETA to conservative wait time + slow driving
+        max_eta = max(10.0, (dist / 2.0) + 120.0) 
+        
+        final_eta = max(min_eta, min(unscaled_eta, max_eta))
+        
+        print(f"[DEBUG ETA] {ev_id} | Dist: {dist:.1f}m | Speed: {current_features[0]:.1f}m/s | Raw AI ETA: {unscaled_eta:.1f}s | Bounded: {final_eta:.1f}s")
+        return final_eta
 
     def _get_downstream_lane(self, ev_id):
         try:
