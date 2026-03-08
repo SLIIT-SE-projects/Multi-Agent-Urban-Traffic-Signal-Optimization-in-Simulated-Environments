@@ -24,6 +24,8 @@ export default function GNNDashboard() {
     }
   }
 
+  const liveDataTabs = ['monitor', 'passing', 'state', 'graph'];
+
   return (
     <div className="h-full flex flex-col">
       <div className="flex justify-between items-center mb-6">
@@ -70,16 +72,26 @@ export default function GNNDashboard() {
       </div>
 
       <div className={`flex-1 pr-2 scrollbar-thin scrollbar-thumb-slate-800 scrollbar-track-transparent ${activeSubTab === 'graph' ? 'overflow-hidden' : 'overflow-y-auto'}`}>
-        {activeSubTab === 'monitor' && <GnnMonitorTab socketData={socketData} isRunning={isRunning} />}
-        {activeSubTab === 'passing' && <GnnMessagePassingTab socketData={socketData} />}
-        {activeSubTab === 'state' && <GnnGraphStateTab socketData={socketData} />}
-        {activeSubTab === 'graph' && <GnnGraphTab socketData={socketData} />}
-        {activeSubTab === 'config' && <GnnConfigTab />}
-        {activeSubTab === 'logs' && (
-          <div className="text-slate-500 flex flex-col items-center justify-center h-64 border-2 border-dashed border-slate-800 rounded-xl bg-slate-900/50">
-            <FileText size={48} className="mb-4 opacity-50" />
-            <p>Training logs and tensorboard integration would appear here.</p>
+        {liveDataTabs.includes(activeSubTab) && !isRunning ? (
+          <div className="h-full flex flex-col items-center justify-center text-slate-500 space-y-4">
+            <Activity size={48} className="opacity-20" />
+            <h2 className="text-xl font-medium text-slate-400">Agent is Offline</h2>
+            <p className="text-sm">Start the GNN Agent to view real-time metrics and spatial telemetry.</p>
           </div>
+        ) : (
+          <>
+            {activeSubTab === 'monitor' && <GnnMonitorTab socketData={socketData} isRunning={isRunning} />}
+            {activeSubTab === 'passing' && <GnnMessagePassingTab socketData={socketData} />}
+            {activeSubTab === 'state' && <GnnGraphStateTab socketData={socketData} />}
+            {activeSubTab === 'graph' && <GnnGraphTab socketData={socketData} />}
+            {activeSubTab === 'config' && <GnnConfigTab />}
+            {activeSubTab === 'logs' && (
+              <div className="text-slate-500 flex flex-col items-center justify-center h-64 border-2 border-dashed border-slate-800 rounded-xl bg-slate-900/50">
+                <FileText size={48} className="mb-4 opacity-50" />
+                <p>Training logs and tensorboard integration would appear here.</p>
+              </div>
+            )}
+          </>
         )}
       </div>
 
