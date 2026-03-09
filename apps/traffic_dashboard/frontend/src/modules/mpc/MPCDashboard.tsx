@@ -1,7 +1,9 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { Activity, Square, Settings, BookMarked, Loader2, ChevronDown, X } from 'lucide-react';
+import { Activity, Square, Settings, BookMarked, Loader2, ChevronDown, X, BarChart2, Cpu } from 'lucide-react';
 import MpcMonitorTab from './components/MpcMonitorTab';
 import MpcConfigTab from './components/MpcConfigTab';
+import MpcAnalysisTab from './components/MpcAnalysisTab';
+import MpcInternalsTab from './components/MpcInternalsTab';
 
 const BASE_URL = '/api';
 
@@ -303,11 +305,10 @@ export function MPCDashboard() {
 
     const handleStop = useCallback(async () => {
         try {
-            await fetch(`${BASE_URL}/simulation/stop`, { method: 'POST' });
             await fetch(`${BASE_URL}/optimizer/unload`, { method: 'POST' });
         } catch { }
         setMode('idle');
-        showToast('Stopped', 'Simulation stopped. Charts preserved.', 'info');
+        showToast('MPC Deactivated', 'MPC signals removed — simulation continues with baseline.', 'info');
     }, [showToast]);
 
     // ── Derived ───────────────────────────────────────────────────────────────
@@ -385,7 +386,7 @@ export function MPCDashboard() {
                         {mode === 'mpc_active' ? 'MPC Active' : 'Activate MPC'}
                     </button>
 
-                    {/* Stop */}
+                    {/* Deactivate MPC */}
                     <button
                         onClick={handleStop}
                         disabled={mode === 'idle'}
@@ -395,7 +396,7 @@ export function MPCDashboard() {
                                 : 'bg-rose-500/10 text-rose-400 border border-rose-500/50 hover:bg-rose-500/20'}`}
                     >
                         <Square size={16} fill={mode !== 'idle' ? 'currentColor' : 'none'} />
-                        Stop
+                        Deactivate MPC
                     </button>
                 </div>
             </div>
@@ -415,18 +416,20 @@ export function MPCDashboard() {
             )}
 
             {/* ── Tabs ── */}
-            <div className="flex border-b border-slate-800 mb-6">
+            <div className="flex border-b border-slate-800 mb-6 overflow-x-auto scrollbar-none">
                 {[
-                    { id: 'monitor', label: 'Real-time Monitor', icon: Activity },
+                    { id: 'monitor', label: 'Live Monitor', icon: Activity },
+                    { id: 'analysis', label: 'Analysis', icon: BarChart2 },
+                    { id: 'internals', label: 'Optimizer Internals', icon: Cpu },
                     { id: 'config', label: 'Controller Config', icon: Settings },
                 ].map(tab => (
                     <button
                         key={tab.id}
                         onClick={() => setActiveSubTab(tab.id)}
-                        className={`flex items-center gap-2 px-6 py-3 text-sm font-medium border-b-2 transition-colors
+                        className={`flex items-center gap-2 px-5 py-3 text-sm font-medium border-b-2 whitespace-nowrap transition-colors
                             ${activeSubTab === tab.id ? 'border-indigo-500 text-indigo-400' : 'border-transparent text-slate-400 hover:text-slate-200'}`}
                     >
-                        <tab.icon size={16} /> {tab.label}
+                        <tab.icon size={15} /> {tab.label}
                     </button>
                 ))}
             </div>
@@ -436,6 +439,10 @@ export function MPCDashboard() {
                 {activeSubTab === 'monitor' && (
                     <MpcMonitorTab mode={mode} status={status} dataHistory={mpcHistory} hasBaseline={!!baselineData} />
                 )}
+                {activeSubTab === 'analysis' && (
+                    <MpcAnalysisTab dataHistory={mpcHistory} baselineMeta={baselineMeta} />
+                )}
+                {activeSubTab === 'internals' && <MpcInternalsTab />}
                 {activeSubTab === 'config' && <MpcConfigTab />}
             </div>
 

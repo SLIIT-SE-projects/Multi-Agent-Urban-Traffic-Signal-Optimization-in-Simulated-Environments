@@ -85,13 +85,17 @@ class MPCController:
         lost_time = self.cfg.yellow_time * self.Phases   # yellow lost time per cycle
         available_green = self.CycleTime - lost_time
 
-        min_g = float(self.cfg.min_green_time)   # Fix 4: from config (5s)
+        # Fix: cap min_g so it's always feasible regardless of phase count.
+        # For high-phase intersections (6+), min_g * Phases can exceed available_green
+        # (e.g. 5s × 6 phases = 30s > 27s available) → IPOPT Infeasible_Problem_Detected.
+        min_g = min(float(self.cfg.min_green_time), available_green / self.Phases)
+        min_g = max(min_g, 1.0)   # absolute floor of 1 second
 
         for k in range(self.N):
             # Green splits must sum to available green budget
             self.opti.subject_to(ca.sum1(self.G[:, k]) == available_green)
 
-            # Fix 4: per-phase minimum green (5s default, 2x less restrictive than before)
+            # Per-phase minimum and maximum green (feasibility-safe)
             self.opti.subject_to(self.G[:, k] >= min_g)
             self.opti.subject_to(self.G[:, k] <= float(self.cfg.max_green_time))
 

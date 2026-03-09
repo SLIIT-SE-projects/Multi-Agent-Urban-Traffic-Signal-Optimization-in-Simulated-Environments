@@ -52,11 +52,12 @@ class OptimizationConfig(BaseModel):
     time_limit: PositiveFloat = Field(default=0.1, description="Solver time limit in seconds")
 
     # Cost Function Weights
-    # weight_queue=5.0: more aggressive queue reduction vs baseline
-    # weight_switch=2.0: reduced from 10 so optimizer is less afraid to redistribute green
-    weight_queue: float = Field(default=5.0, ge=0.0)
+    # weight_queue=10.0: extremely aggressive queue reduction
+    # weight_switch=0.1: deeply reduced so optimizer will readily allocate max green
+    # to single clogged phases rather than trying to keep times equal.
+    weight_queue: float = Field(default=10.0, ge=0.0)
     weight_delay: float = Field(default=0.0, ge=0.0)
-    weight_switch: float = Field(default=2.0, ge=0.0, description="Penalty for changing phases")
+    weight_switch: float = Field(default=0.1, ge=0.0, description="Penalty for changing phases")
 
 
 class MPCConfig(BaseModel):

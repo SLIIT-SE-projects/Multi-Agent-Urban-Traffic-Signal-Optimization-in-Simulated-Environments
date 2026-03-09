@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:latlong2/latlong.dart';
+import 'dart:convert';
+import 'package:http/http.dart' as http;
 import '../../../../core/widgets/app_drawer.dart';
 import '../../../../core/widgets/custom_floating_app_bar.dart';
+import '../../../../core/constants/app_constants.dart';
 import '../../../navigation/presentation/screens/driver_dashboard.dart';
 import 'location_picker_screen.dart';
 
@@ -13,9 +16,13 @@ class TripSetupScreen extends StatefulWidget {
 }
 
 class _TripSetupScreenState extends State<TripSetupScreen> {
-  final _startLocationController = TextEditingController(text: 'Katunayake');
+  final _startLocationController = TextEditingController();
   final _destinationController = TextEditingController();
+  final _evIdController = TextEditingController();
+  LatLng? _startLocation;
+  LatLng? _endLocation;
   String _priority = 'Critical';
+  bool _isLoading = false;
 
   final List<String> _priorities = ['Critical', 'High', 'Standard'];
 
@@ -23,17 +30,76 @@ class _TripSetupScreenState extends State<TripSetupScreen> {
   void dispose() {
     _startLocationController.dispose();
     _destinationController.dispose();
+    _evIdController.dispose();
     super.dispose();
   }
 
-  void _startMission() {
-    Navigator.pushReplacement(
-      context,
-      MaterialPageRoute(builder: (context) => const DriverDashboard()),
-    );
+  Future<void> _startMission() async {
+    if (_startLocation == null || _endLocation == null) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Please select both a Start and Destination location.'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+      return;
+    }
+
+    setState(() => _isLoading = true);
+
+    final String customId = _evIdController.text.trim();
+    final evId = customId.isNotEmpty ? customId : "EV_Unit_${DateTime.now().millisecondsSinceEpoch}";
+    final url = Uri.parse('http://${AppConstants.serverIpAddress}:5000/api/evps/spawn_geo');
+
+    try {
+      final response = await http.post(
+        url,
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          "start_lat": _startLocation!.latitude,
+          "start_lon": _startLocation!.longitude,
+          "end_lat": _endLocation!.latitude,
+          "end_lon": _endLocation!.longitude,
+          "ev_id": evId,
+        }),
+      );
+
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        if (mounted) {
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(builder: (context) => DriverDashboard(evId: evId, isLocked: true)),
+          );
+        }
+      } else {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Dispatch Failed: Could not spawn vehicle. Ensure coordinates are on valid roads.'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Dispatch Failed: Could not spawn vehicle. Ensure coordinates are on valid roads.'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
+    }
   }
 
-  Future<void> _pickLocation(TextEditingController controller) async {
+  Future<void> _pickLocation(TextEditingController controller, bool isStart) async {
     final result = await Navigator.push<LatLng>(
       context,
       MaterialPageRoute(builder: (context) => const LocationPickerScreen()),
@@ -41,6 +107,11 @@ class _TripSetupScreenState extends State<TripSetupScreen> {
 
     if (result != null) {
       setState(() {
+        if (isStart) {
+          _startLocation = result;
+        } else {
+          _endLocation = result;
+        }
         // Format: "Lat: 6.9271, Lng: 79.8612"
         controller.text = "Lat: ${result.latitude.toStringAsFixed(4)}, Lng: ${result.longitude.toStringAsFixed(4)}";
       });
@@ -102,7 +173,7 @@ class _TripSetupScreenState extends State<TripSetupScreen> {
                   icon: const Icon(Icons.map_rounded),
                   color: primaryColor,
                   tooltip: 'Set location on map',
-                  onPressed: () => _pickLocation(_startLocationController),
+                  onPressed: () => _pickLocation(_startLocationController, true),
                 ),
               ),
               const SizedBox(height: 16),
@@ -115,7 +186,7 @@ class _TripSetupScreenState extends State<TripSetupScreen> {
                   icon: const Icon(Icons.map_rounded),
                   color: primaryColor,
                   tooltip: 'Set location on map',
-                  onPressed: () => _pickLocation(_destinationController),
+                  onPressed: () => _pickLocation(_destinationController, false),
                 ),
               ),
               
@@ -179,31 +250,39 @@ class _TripSetupScreenState extends State<TripSetupScreen> {
               SizedBox(
                 height: 56,
                 child: ElevatedButton(
-                  onPressed: _startMission,
+                  onPressed: (_startLocation != null && _endLocation != null && !_isLoading) ? _startMission : null,
                   style: ElevatedButton.styleFrom(
                     backgroundColor: Colors.red[600], // Red for urgency
                     foregroundColor: Colors.white,
+                    disabledBackgroundColor: Colors.grey[400],
+                    disabledForegroundColor: Colors.grey[200],
                     elevation: 8,
                     shadowColor: Colors.red.withOpacity(0.4),
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(16),
                     ),
                   ),
-                  child: const Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(Icons.emergency_share_rounded, size: 28),
-                      SizedBox(width: 12),
-                      Text(
-                        'START EMERGENCY MISSION',
-                        style: TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                          letterSpacing: 0.5,
-                        ),
+                  child: _isLoading 
+                    ? const SizedBox(
+                        height: 24,
+                        width: 24,
+                        child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
+                      )
+                    : const Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(Icons.emergency_share_rounded, size: 28),
+                          SizedBox(width: 12),
+                          Text(
+                            'START EMERGENCY MISSION',
+                            style: TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                              letterSpacing: 0.5,
+                            ),
+                          ),
+                        ],
                       ),
-                    ],
-                  ),
                 ),
               ),
             ],
@@ -228,7 +307,7 @@ class _TripSetupScreenState extends State<TripSetupScreen> {
 
   Widget _buildVehicleSummaryCard(ThemeData theme) {
     return Container(
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
       decoration: BoxDecoration(
         color: const Color(0xFF2D3748), // Dark background for contrast
         borderRadius: BorderRadius.circular(24),
@@ -249,48 +328,32 @@ class _TripSetupScreenState extends State<TripSetupScreen> {
               shape: BoxShape.circle,
             ),
             child: const Icon(
-              Icons.directions_car_filled_rounded,
+              Icons.local_shipping_rounded,
               color: Colors.white,
-              size: 32,
+              size: 28,
             ),
           ),
           const SizedBox(width: 16),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'Current Vehicle',
-                style: theme.textTheme.bodyMedium?.copyWith(
-                  color: Colors.white.withOpacity(0.6),
-                ),
-              ),
-              const SizedBox(height: 4),
-              const Text(
-                'EV_0',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 24,
-                  fontWeight: FontWeight.bold,
-                  letterSpacing: 1,
-                ),
-              ),
-            ],
-          ),
-          const Spacer(),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-            decoration: BoxDecoration(
-              color: Colors.greenAccent.withOpacity(0.2),
-              borderRadius: BorderRadius.circular(20),
-              border: Border.all(color: Colors.greenAccent.withOpacity(0.5)),
-            ),
-            child: const Text(
-              'Active',
-              style: TextStyle(
-                color: Colors.greenAccent,
+          Expanded(
+            child: TextField(
+              controller: _evIdController,
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 18,
                 fontWeight: FontWeight.bold,
-                fontSize: 12,
+                letterSpacing: 1,
               ),
+              decoration: InputDecoration(
+                hintText: 'Enter Custom EV ID (Optional)',
+                hintStyle: TextStyle(
+                  color: Colors.white.withOpacity(0.5),
+                  fontSize: 15,
+                  fontWeight: FontWeight.normal,
+                  letterSpacing: 0,
+                ),
+                border: InputBorder.none,
+              ),
+              cursorColor: Colors.white,
             ),
           ),
         ],

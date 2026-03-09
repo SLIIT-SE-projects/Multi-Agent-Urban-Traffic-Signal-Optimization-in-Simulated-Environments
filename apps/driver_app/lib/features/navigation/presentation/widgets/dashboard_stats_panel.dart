@@ -48,10 +48,10 @@ class DashboardStatsPanel extends StatelessWidget {
           _buildStatCard(
             context,
             "ETA",
-            eta.toStringAsFixed(0),
-            "sec",
-            Icons.timer_rounded,
-            Colors.orangeAccent,
+            isGreenWaveActive ? "PREEMPTED" : eta.toStringAsFixed(0),
+            isGreenWaveActive ? "" : "sec",
+            isGreenWaveActive ? Icons.check_circle_rounded : Icons.timer_rounded,
+            isGreenWaveActive ? const Color(0xFF2ECC71) : Colors.orangeAccent,
           ),
 
           _buildDivider(),
@@ -106,21 +106,23 @@ class DashboardStatsPanel extends StatelessWidget {
             children: [
               Text(
                 value,
-                style: const TextStyle(
-                  fontSize: 22,
-                  fontWeight: FontWeight.w800,
-                  color: Colors.black87,
-                ),
-              ),
-              const SizedBox(width: 2),
-              Text(
-                unit,
                 style: TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
-                  color: Colors.grey.shade600,
+                  fontSize: value == "PREEMPTED" || value == "CLEAR" ? 14 : 22,
+                  fontWeight: FontWeight.w800,
+                  color: value == "PREEMPTED" || value == "CLEAR" ? color : Colors.black87,
                 ),
               ),
+              if (unit.isNotEmpty) ...[
+                const SizedBox(width: 2),
+                Text(
+                  unit,
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.grey.shade600,
+                  ),
+                ),
+              ],
             ],
           ),
           const SizedBox(height: 4),
