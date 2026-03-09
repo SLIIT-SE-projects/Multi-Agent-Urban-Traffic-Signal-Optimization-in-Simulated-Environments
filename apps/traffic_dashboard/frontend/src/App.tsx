@@ -17,6 +17,7 @@ import GNNDashboard from './modules/gnn/GNNDashboard';
 import { MPCDashboard } from './modules/mpc/MPCDashboard';
 import SystemOverview from './modules/overview/SystemOverview';
 import EvpsDashboard from './modules/evps/EvpsDashboard';
+import { GnnProvider } from './modules/gnn/context/GnnContext';
 
 // --- 1. SIDEBAR COMPONENT (Ported from Code 1) ---
 const Sidebar = () => (
@@ -93,42 +94,44 @@ const TopHeader = () => (
 // --- 4. MAIN APP LAYOUT ---
 export default function App() {
   return (
-    <BrowserRouter>
-      {/* We use flex-row here. 
+    <GnnProvider>
+      <BrowserRouter>
+        {/* We use flex-row here. 
          Sidebar is flex-none (fixed width).
          Main is flex-1 (takes remaining space).
       */}
-      <div className="flex h-screen bg-[#0B1120] text-slate-100 font-sans overflow-hidden">
-        <Sidebar />
+        <div className="flex h-screen bg-[#0B1120] text-slate-100 font-sans overflow-hidden">
+          <Sidebar />
 
-        <main className="flex-1 flex flex-col min-w-0">
-          <TopHeader />
+          <main className="flex-1 flex flex-col min-w-0">
+            <TopHeader />
 
-          <div className="flex-1 overflow-y-auto p-8">
-            <Routes>
-              <Route path="/" element={<Navigate to="/overview" />} />
+            <div className="flex-1 overflow-y-auto p-8">
+              <Routes>
+                <Route path="/" element={<Navigate to="/overview" />} />
 
-              <Route path="/overview" element={<SystemOverview />} />
+                <Route path="/overview" element={<SystemOverview />} />
 
-              {/* IMPORTANT: Since App.tsx now handles the Sidebar, 
+                {/* IMPORTANT: Since App.tsx now handles the Sidebar, 
                   make sure GNNDashboard does NOT render its own Sidebar.
                   It should only render the content part.
               */}
-              <Route path="/gnn/*" element={<GNNDashboard />} />
+                <Route path="/gnn/*" element={<GNNDashboard />} />
 
-              <Route path="/mpc" element={<MPCDashboard />} />
-              
-              <Route path="/evps" element={<EvpsDashboard />} />
+                <Route path="/mpc" element={<MPCDashboard />} />
 
-              <Route path="/config" element={
-                <div className="p-10 border-2 border-dashed border-slate-800 rounded-2xl bg-slate-900/20 text-center">
-                  <h1 className="text-2xl font-bold text-white">System Configuration</h1>
-                </div>
-              } />
-            </Routes>
-          </div>
-        </main>
-      </div>
-    </BrowserRouter>
+                <Route path="/evps" element={<EvpsDashboard />} />
+
+                <Route path="/config" element={
+                  <div className="p-10 border-2 border-dashed border-slate-800 rounded-2xl bg-slate-900/20 text-center">
+                    <h1 className="text-2xl font-bold text-white">System Configuration</h1>
+                  </div>
+                } />
+              </Routes>
+            </div>
+          </main>
+        </div>
+      </BrowserRouter>
+    </GnnProvider>
   );
 }

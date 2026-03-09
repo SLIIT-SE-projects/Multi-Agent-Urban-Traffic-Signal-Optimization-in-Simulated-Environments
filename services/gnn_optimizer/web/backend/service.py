@@ -153,7 +153,9 @@ class RemoteOptimizationService:
             'total_co2': total_co2,
             'total_waiting_time': total_waiting,
             'throughput': throughput,
-            'intersections': raw_data.get('intersections', {})
+            'intersections': raw_data.get('intersections', {}),
+            'lanes': lanes,
+            'gnn_telemetry': raw_data.get('optimizer_telemetry', {})
         }
 
         # Record if in baseline mode

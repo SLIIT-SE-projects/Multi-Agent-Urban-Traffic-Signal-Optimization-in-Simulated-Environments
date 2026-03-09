@@ -188,6 +188,60 @@ class SimulationController:
             print(f"❌ Error parsing topology: {e}")
             return {"error": str(e)}
 
+    def get_network_geojson(self):
+        """
+        Parses the SUMO network file and returns a GeoJSON FeatureCollection
+        of all non-internal edges (roads).
+        """
+        import sumolib
+        net_file = self._get_net_file_from_config()
+        if not net_file:
+            return {"error": "Network file not found"}
+
+        try:
+            # We use sumolib to get precise node coordinates and handle projections
+            net = sumolib.net.readNet(net_file)
+            
+            features = []
+            # Only iterate through standard edges (ignore internal junction paths)
+            for edge in net.getEdges():
+                if edge.isSpecial():
+                    continue
+                
+                # Get raw SUMO Cartesian (x,y) coordinates for the edge shape
+                shape = edge.getShape()
+                line_coords = []
+                
+                # Convert each point to WGS84 (Lon, Lat) which GeoJSON expects
+                for (x, y) in shape:
+                    lon, lat = net.convertXY2LonLat(x, y)
+                    line_coords.append([lon, lat])
+                
+                feature = {
+                    "type": "Feature",
+                    "properties": {
+                        "id": edge.getID(),
+                        "type": edge.getType() if edge.getType() else "road",
+                        "lanes": edge.getLaneNumber(),
+                        "speedLimit": edge.getSpeed()
+                    },
+                    "geometry": {
+                        "type": "LineString",
+                        "coordinates": line_coords
+                    }
+                }
+                features.append(feature)
+
+            geojson = {
+                "type": "FeatureCollection",
+                "features": features
+            }
+            return geojson
+
+        except Exception as e:
+            print(f"❌ Error extracting GeoJSON: {e}")
+            return {"error": str(e)}
+
     def _apply_gnn_binary_actions(self, actions):
         """
         Applies GNN binary keep/switch actions.
@@ -369,13 +423,21 @@ class SimulationController:
                 # Capture global metrics
                 arrived_vehicles = traci.simulation.getArrivedNumber()
                 
+                opt_telemetry = {}
+                if self.optimization_enabled and self.optimizer and hasattr(self.optimizer, 'get_telemetry'):
+                    opt_telemetry = self.optimizer.get_telemetry()
+                
+                if opt_telemetry:
+                    print(f"DEBUG Emitter: Telemetry payload contains: {list(opt_telemetry.keys())}")
+                    
                 self.socketio.emit('simulation_step', {
                     'step': self.current_step,
                     'lanes': snapshot['lanes'],
                     'intersections': snapshot['intersections'],
                     'global': {
                         'arrived_vehicles': arrived_vehicles
-                    }
+                    },
+                    'optimizer_telemetry': opt_telemetry
                 })
             except Exception as e:
                 print(f"Socket Emit Error: {e}")

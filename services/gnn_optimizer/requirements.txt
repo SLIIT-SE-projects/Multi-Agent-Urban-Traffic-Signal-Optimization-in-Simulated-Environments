@@ -7,3 +7,4 @@ flask
 python-socketio 
 matplotlib
 scikit-learn
+websocket-client

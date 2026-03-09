@@ -1,7 +1,10 @@
 import React, { useEffect, useState } from 'react';
-import { Activity, Car, Zap, Leaf } from 'lucide-react';
+import { Activity, Car, Cpu, Brain } from 'lucide-react';
 import GnnStatCard from './GnnStatCard';
 import GnnChartCard from './GnnChartCard';
+import GnnRealTimeLatencyBarChart from './GnnRealTimeLatencyBarChart';
+import GnnRealTimeUncertaintyChart from './GnnRealTimeUncertaintyChart';
+import GnnActionLog from './GnnActionLog';
 import { DASHBOARD_API_URL } from '../../../config';
 
 interface GnnMonitorTabProps {
@@ -14,6 +17,13 @@ interface GnnMonitorTabProps {
 
 const GnnMonitorTab: React.FC<GnnMonitorTabProps> = ({ socketData, isRunning }) => {
     const { currentMetrics, dataHistory } = socketData;
+    const gnnTelemetry = currentMetrics?.gnn_telemetry || { perNodeLatencyMs: {}, uncertaintyScore: 0 };
+
+    // Process new per-node latency map into an average for the stat card
+    const latencies = Object.values(gnnTelemetry.perNodeLatencyMs || {}) as number[];
+    const avgLatency = latencies.length > 0
+        ? latencies.reduce((sum, val) => sum + val, 0) / latencies.length
+        : 0;
     const [baselineData, setBaselineData] = useState<any[]>([]);
 
     useEffect(() => {
@@ -44,10 +54,15 @@ const GnnMonitorTab: React.FC<GnnMonitorTabProps> = ({ socketData, isRunning }) 
     return (
         <div className="space-y-6 animate-in fade-in duration-500">
             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
+                <GnnStatCard title="Avg Node Latency" value={avgLatency.toFixed(2)} unit="ms" icon={<Cpu />} color="text-emerald-500" />
+                <GnnStatCard title="Model Uncertainty" value={gnnTelemetry.uncertaintyScore} unit="Score" icon={<Brain />} color="text-amber-500" />
                 <GnnStatCard title="Avg Queue" value={currentMetrics.total_queue} unit="veh" icon={<Car />} color="text-blue-500" />
-                <GnnStatCard title="Avg Speed" value={currentMetrics.avg_speed} unit="m/s" icon={<Zap />} color="text-amber-400" />
-                <GnnStatCard title="Emissions" value={currentMetrics.total_co2} unit="g/s" icon={<Leaf />} color="text-emerald-500" />
                 <GnnStatCard title="Throughput" value={currentMetrics.cumulative_throughput} unit="veh" icon={<Activity />} color="text-purple-500" />
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <GnnRealTimeLatencyBarChart socketData={socketData} />
+                <GnnRealTimeUncertaintyChart socketData={socketData} />
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -60,7 +75,7 @@ const GnnMonitorTab: React.FC<GnnMonitorTabProps> = ({ socketData, isRunning }) 
                     <GnnChartCard title="CO2 Impact" data={dataHistory} baselineData={baselineData} dataKey="total_co2" color="text-emerald-500" fillId="cGrad" height="h-64" />
                 </div>
                 <div className="lg:col-span-2">
-                    <GnnChartCard title="Waiting Time Distribution" data={dataHistory} baselineData={baselineData} dataKey="total_waiting_time" color="text-rose-500" fillId="wGrad" height="h-64" />
+                    <GnnActionLog socketData={socketData} />
                 </div>
             </div>
         </div>
