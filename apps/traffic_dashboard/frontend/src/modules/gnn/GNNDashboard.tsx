@@ -62,7 +62,6 @@ export default function GNNDashboard() {
           { id: 'state', label: 'Graph State', icon: FileText },
           { id: 'graph', label: 'Network Graph', icon: Share2 },
           { id: 'config', label: 'Model Configuration', icon: Sliders },
-          { id: 'logs', label: 'Training Logs', icon: FileText },
         ].map(tab => (
           <button
             key={tab.id}
@@ -91,12 +90,6 @@ export default function GNNDashboard() {
             {activeSubTab === 'state' && <GnnGraphStateTab socketData={socketData} />}
             {activeSubTab === 'graph' && <GnnGraphTab socketData={socketData} />}
             {activeSubTab === 'config' && <GnnConfigTab />}
-            {activeSubTab === 'logs' && (
-              <div className="text-slate-500 flex flex-col items-center justify-center h-64 border-2 border-dashed border-slate-800 rounded-xl bg-slate-900/50">
-                <FileText size={48} className="mb-4 opacity-50" />
-                <p>Training logs and tensorboard integration would appear here.</p>
-              </div>
-            )}
           </>
         )}
       </div>
