@@ -55,7 +55,7 @@ const GnnMonitorTab: React.FC<GnnMonitorTabProps> = ({ socketData, isRunning }) 
         <div className="space-y-6 animate-in fade-in duration-500">
             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
                 <GnnStatCard title="Avg Node Latency" value={avgLatency.toFixed(2)} unit="ms" icon={<Cpu />} color="text-emerald-500" />
-                <GnnStatCard title="Model Uncertainty" value={gnnTelemetry.uncertaintyScore} unit="Score" icon={<Brain />} color="text-amber-500" />
+                <GnnStatCard title="Model Uncertainty" value={typeof gnnTelemetry.uncertaintyScore === 'number' ? gnnTelemetry.uncertaintyScore.toFixed(4) : '0.0000'} unit="Score" icon={<Brain />} color="text-amber-500" />
                 <GnnStatCard title="Avg Queue" value={currentMetrics.total_queue} unit="veh" icon={<Car />} color="text-blue-500" />
                 <GnnStatCard title="Throughput" value={currentMetrics.cumulative_throughput} unit="veh" icon={<Activity />} color="text-purple-500" />
             </div>
