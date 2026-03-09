@@ -1,6 +1,13 @@
 import { useEffect, useState, useRef } from 'react';
 import { WS_BASE_URL, ENDPOINTS } from '../../../config';
 
+export interface GnnPerformanceMetrics {
+    perNodeLatencyMs: Record<string, number>;
+    perNodeUncertainty: Record<string, number>;
+    layerActivations?: Record<string, Record<string, number>>;
+    uncertaintyScore: number;
+}
+
 export interface TrafficData {
     step: number;
     total_queue: number;
@@ -8,13 +15,16 @@ export interface TrafficData {
     total_co2: number;
     total_waiting_time: number;
     cumulative_throughput: number;
+    gnn_telemetry?: GnnPerformanceMetrics;
+    intersections?: Record<string, any>;
+    lanes?: Record<string, any>;
 }
 
 export const useTrafficSocket = () => {
     const [isConnected, setIsConnected] = useState(false);
     const [dataHistory, setDataHistory] = useState<TrafficData[]>([]);
-    const [currentMetrics, setCurrentMetrics] = useState({
-        step: 0, total_queue: 0, avg_speed: 0, total_co2: 0, total_waiting_time: 0, cumulative_throughput: 0
+    const [currentMetrics, setCurrentMetrics] = useState<TrafficData>({
+        step: 0, total_queue: 0, avg_speed: 0, total_co2: 0, total_waiting_time: 0, cumulative_throughput: 0, gnn_telemetry: { perNodeLatencyMs: {}, perNodeUncertainty: {}, uncertaintyScore: 0 }
     });
 
     const ws = useRef<WebSocket | null>(null);
@@ -41,11 +51,22 @@ export const useTrafficSocket = () => {
                 if (response.channel === 'gnn_metrics') {
                     const data = response.data;
 
-                    setCurrentMetrics(prev => ({
-                        ...prev,
-                        ...data,
-                        cumulative_throughput: prev.cumulative_throughput + (data.throughput || 0)
-                    }));
+                    setCurrentMetrics(prev => {
+                        // Only overwrite gnn_telemetry if the incoming data actually contains the perNode maps
+                        const incomingTelemetry = data.gnn_telemetry;
+                        const hasNewTelemetry = incomingTelemetry &&
+                            incomingTelemetry.perNodeLatencyMs &&
+                            Object.keys(incomingTelemetry.perNodeLatencyMs).length > 0;
+
+                        const finalTelemetry = hasNewTelemetry ? incomingTelemetry : prev.gnn_telemetry;
+
+                        return {
+                            ...prev,
+                            ...data,
+                            gnn_telemetry: finalTelemetry, // Use the safeguarded telemetry
+                            cumulative_throughput: prev.cumulative_throughput + (data.throughput || 0)
+                        };
+                    });
 
                     setDataHistory(prev => {
                         const newH = [...prev, { ...data, cumulative_throughput: 0 }];
