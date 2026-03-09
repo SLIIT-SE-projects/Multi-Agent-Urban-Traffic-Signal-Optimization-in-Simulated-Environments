@@ -113,28 +113,62 @@ function RecordDialog({ initialScenario, scenarios, onConfirm, onCancel }: Recor
 }
 
 
+// ── Global State to persist across tab switches ──────────────────────────────
+let g_activeSubTab = 'monitor';
+let g_mode: DashboardMode = 'idle';
+let g_status: any = null;
+let g_isConnected = false;
+let g_mpcHistory: any[] = [];
+let g_baselineData: any[] | null = null;
+let g_baselineMeta: any = null;
+let g_recordStep = 0;
+let g_recordTarget = 500;
+let g_currentScenario = 'grid3x3';
+
 // ── Main Dashboard ────────────────────────────────────────────────────────────
 export function MPCDashboard() {
-    const [activeSubTab, setActiveSubTab] = useState('monitor');
-    const [mode, setMode] = useState<DashboardMode>('idle');
-    const [status, setStatus] = useState<any>(null);
-    const [isConnected, setIsConnected] = useState(false);
+    const [activeSubTab, _setActiveSubTab] = useState(g_activeSubTab);
+    const setActiveSubTab = (v: any) => { g_activeSubTab = v; _setActiveSubTab(v); };
+
+    const [mode, _setMode] = useState<DashboardMode>(g_mode);
+    const setMode = (v: any) => { g_mode = v; _setMode(v); };
+
+    const [status, _setStatus] = useState<any>(g_status);
+    const setStatus = (v: any) => { g_status = v; _setStatus(v); };
+
+    const [isConnected, _setIsConnected] = useState(g_isConnected);
+    const setIsConnected = (v: any) => { g_isConnected = v; _setIsConnected(v); };
 
     // MPC live data — only populated in mpc_active mode
-    const [mpcHistory, setMpcHistory] = useState<any[]>([]);
+    const [mpcHistory, _setMpcHistory] = useState<any[]>(g_mpcHistory);
+    const setMpcHistory = useCallback((action: any) => {
+        _setMpcHistory((prev: any[]) => {
+            const next = typeof action === 'function' ? action(prev) : action;
+            g_mpcHistory = next;
+            return next;
+        });
+    }, []);
 
     // Baseline
-    const [baselineData, setBaselineData] = useState<any[] | null>(null);
-    const [baselineMeta, setBaselineMeta] = useState<any>(null);
+    const [baselineData, _setBaselineData] = useState<any[] | null>(g_baselineData);
+    const setBaselineData = (v: any) => { g_baselineData = v; _setBaselineData(v); };
+
+    const [baselineMeta, _setBaselineMeta] = useState<any>(g_baselineMeta);
+    const setBaselineMeta = (v: any) => { g_baselineMeta = v; _setBaselineMeta(v); };
 
     // Baseline recording progress
-    const [recordStep, setRecordStep] = useState(0);
-    const [recordTarget, setRecordTarget] = useState(500);
+    const [recordStep, _setRecordStep] = useState(g_recordStep);
+    const setRecordStep = (v: any) => { g_recordStep = v; _setRecordStep(v); };
+
+    const [recordTarget, _setRecordTarget] = useState(g_recordTarget);
+    const setRecordTarget = (v: any) => { g_recordTarget = v; _setRecordTarget(v); };
 
     // Record dialog
     const [showRecordDialog, setShowRecordDialog] = useState(false);
     const [availableScenarios, setAvailableScenarios] = useState<string[]>([]);
-    const [currentScenario, setCurrentScenario] = useState<string>('grid3x3');
+
+    const [currentScenario, _setCurrentScenario] = useState<string>(g_currentScenario);
+    const setCurrentScenario = (v: any) => { g_currentScenario = v; _setCurrentScenario(v); };
 
     // Toast
     const [toast, setToast] = useState<{ title: string; message: string; type: 'success' | 'info' | 'error' } | null>(null);
@@ -227,7 +261,7 @@ export function MPCDashboard() {
                 const data = await res.json();
                 setStatus(data);
                 if (data.status === 'success') {
-                    setMpcHistory(prev => {
+                    setMpcHistory((prev: any[]) => {
                         if (prev.length > 0 && prev[prev.length - 1].step === data.step) return prev;
                         const pt: any = {
                             step: data.step,

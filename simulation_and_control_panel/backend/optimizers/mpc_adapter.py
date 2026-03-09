@@ -37,17 +37,36 @@ class MPCTrafficOptimizer:
         self.last_decisions = {} # tls_id -> { max_queue, green_times, lstm_mode }
         
         # Default configs
-        self.mpc_cfg = MPCConfig(
-            prediction_horizon=20,
-            control_horizon=5,
-            min_green_time=5,
-            max_green_time=60
-        )
+        # Identify scenario for map-specific overrides
+        scenario_name = "default"
+        if self.net_path:
+            base = os.path.basename(self.net_path)
+            scenario_name = base.replace(".net.xml", "")
+
+        if scenario_name == 'katunayake':
+            print("🚀 Detected Katunayake map. Expanding MPC cycle time to 120s and max green to 90s.")
+            self.mpc_cfg = MPCConfig(
+                prediction_horizon=20,
+                control_horizon=5,
+                min_green_time=5,
+                max_green_time=90,
+                cycle_time=120
+            )
+        else:
+            self.mpc_cfg = MPCConfig(
+                prediction_horizon=20,
+                control_horizon=5,
+                min_green_time=5,
+                max_green_time=60
+            )
         self.opt_cfg = OptimizationConfig()
         
         # New: Global Predictor
         self.predictor = None
         self.all_lanes_ordered = []
+        
+        # New: Upstream Lane Cache for deep queue polling
+        self.upstream_lanes = {}
         
         self._initialize_controllers()
 
@@ -139,6 +158,22 @@ class MPCTrafficOptimizer:
                     
             print(f"✅ MPC Initialized for {count} intersections.")
             
+            # --- NEW: Build Upstream Lane Cache ---
+            # For each lane in the network, find its immediate upstream predecessors
+            # This is done once to allow fast O(1) recursive queue polling
+            import sumolib
+            if self.net_path:
+                try:
+                    net = sumolib.net.readNet(self.net_path)
+                    for edge in net.getEdges():
+                        for lane in edge.getLanes():
+                            self.upstream_lanes[lane.getID()] = []
+                            for in_lane in lane.getIncoming():
+                                if in_lane is not None:
+                                    self.upstream_lanes[lane.getID()].append(in_lane.getID())
+                except Exception as e:
+                    print(f"⚠️ Could not build upstream lane cache: {e}")
+            
             # --- NEW: Init Predictor ---
             # 1. Collect all lanes from all controllers
             all_lanes_set = set()
@@ -213,7 +248,7 @@ class MPCTrafficOptimizer:
         current_flows = {}
         for lid in self.all_lanes_ordered:
             try:
-                halting = traci.lane.getLastStepHaltingNumber(lid)
+                halting = self._get_recursive_queue(lid)
                 current_flows[lid] = halting / LANE_CAPACITY   # normalised queue occupancy
             except Exception:
                 current_flows[lid] = 0.0   # lane may not exist in this simulation
@@ -284,11 +319,11 @@ class MPCTrafficOptimizer:
 
             # 2. If no plan (or just expired), Re-optimize
             if not plan:
-                # ── Read queue lengths directly from TraCI ──────────────────
+                # ── Read queue lengths recursively via TraCI ──────────────────
                 queues = {}
                 for lid in model.lane_ids:
                     try:
-                        queues[lid] = traci.lane.getLastStepHaltingNumber(lid)
+                        queues[lid] = self._get_recursive_queue(lid)
                     except Exception:
                         queues[lid] = 0
 
@@ -362,7 +397,6 @@ class MPCTrafficOptimizer:
 
         return actions
 
-
     def _get_phase_from_plan(self, plan, elapsed):
         cumulative = 0
         yellow_duration = self.mpc_cfg.yellow_time
@@ -374,6 +408,37 @@ class MPCTrafficOptimizer:
             if elapsed < cumulative:
                 return plan["phases"][i]
         return plan["phases"][-1]
+
+    def _get_recursive_queue(self, lane_id: str, max_distance: float = 250.0) -> int:
+        """
+        Recursively compute the number of halting vehicles on a lane and its upstream
+        feeders up to `max_distance` meters. This fixes the Katunayake 'blindness'
+        issue where short pocket-lanes at intersections mask the true arterial traffic jam.
+        """
+        visited = set()
+        total_halting = 0
+        
+        def _traverse(cur_lid, distance_acc):
+            nonlocal total_halting
+            if cur_lid in visited or distance_acc >= max_distance:
+                return
+            visited.add(cur_lid)
+            
+            try:
+                # Add cars currently on this lane
+                total_halting += traci.lane.getLastStepHaltingNumber(cur_lid)
+                length = traci.lane.getLength(cur_lid)
+            except Exception:
+                return
+                
+            new_dist = distance_acc + length
+            if new_dist < max_distance:
+                predecessors = self.upstream_lanes.get(cur_lid, [])
+                for pred in predecessors:
+                    _traverse(pred, new_dist)
+                    
+        _traverse(lane_id, 0.0)
+        return total_halting
 
     def get_internals(self):
         """Return last optimizer decisions + config for the dashboard Internals tab."""

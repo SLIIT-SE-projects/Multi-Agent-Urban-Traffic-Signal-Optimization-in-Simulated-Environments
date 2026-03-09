@@ -503,7 +503,9 @@ def start_baseline_record():
             sim_controller.start()
 
             # 5. Apply global flow rate to all routes after start (TraCI is live now)
-            if requested_flow_rate is not None:
+            # EXCEPTION: Katunayake map has pre-defined complex traffic. Applying
+            # a basic flow_rate will corrupt its routes and crash SUMO.
+            if requested_flow_rate is not None and requested_scenario != "katunayake":
                 sim_controller.set_global_flow_rate(float(requested_flow_rate))
 
             # 6. Run for the requested number of steps
