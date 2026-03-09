@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
+import 'dart:convert';
+import 'package:http/http.dart' as http;
 import '../../../../core/constants/app_constants.dart';
 
 class LocationPickerScreen extends StatefulWidget {
@@ -13,6 +15,42 @@ class LocationPickerScreen extends StatefulWidget {
 class _LocationPickerScreenState extends State<LocationPickerScreen> {
   final MapController _mapController = MapController();
   LatLng? _selectedLocation;
+  LatLng _initialCenter = AppConstants.defaultMapCenter;
+  bool _isLoading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _fetchMapCenter();
+  }
+
+  Future<void> _fetchMapCenter() async {
+    try {
+      final url = Uri.parse('http://${AppConstants.serverIpAddress}:5000/api/simulation/topology');
+      final response = await http.get(url);
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        if (data != null && data['center_lat'] != null && data['center_lon'] != null) {
+          setState(() {
+            _initialCenter = LatLng(
+              data['center_lat'].toDouble(),
+              data['center_lon'].toDouble(),
+            );
+          });
+        }
+      }
+    } catch (e) {
+      print('Error fetching map center: $e');
+      // Fallback to defaultMapCenter
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
+    }
+  }
 
   void _handleTap(TapPosition tapPosition, LatLng point) {
     setState(() {
@@ -42,13 +80,18 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
       ),
       body: Stack(
         children: [
-          FlutterMap(
-            mapController: _mapController,
-            options: MapOptions(
-              initialCenter: AppConstants.defaultMapCenter,
-              initialZoom: 15.0,
-              onTap: _handleTap,
-            ),
+          if (_isLoading)
+            const Center(
+              child: CircularProgressIndicator(),
+            )
+          else
+            FlutterMap(
+              mapController: _mapController,
+              options: MapOptions(
+                initialCenter: _initialCenter,
+                initialZoom: 15.0,
+                onTap: _handleTap,
+              ),
             children: [
               TileLayer(
                 urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',

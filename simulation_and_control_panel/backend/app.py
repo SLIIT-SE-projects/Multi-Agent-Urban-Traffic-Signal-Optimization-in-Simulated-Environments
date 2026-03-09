@@ -289,11 +289,50 @@ def toggle_evps():
     evps_adapter.toggle_evps(bool(enable))
     return jsonify({"status": "success", "evps_enabled": bool(enable)})
 
+@app.route('/api/evps/spawn_geo', methods=['POST'])
+def spawn_ev_from_geo():
+    data = request.get_json(silent=True) or {}
+    start_lat = data.get('start_lat')
+    start_lon = data.get('start_lon')
+    end_lat = data.get('end_lat')
+    end_lon = data.get('end_lon')
+    ev_id = data.get('ev_id')
+
+    if None in [start_lat, start_lon, end_lat, end_lon]:
+        return jsonify({"status": "error", "message": "Missing coordinates"}), 400
+
+    try:
+        start_lat = float(start_lat)
+        start_lon = float(start_lon)
+        end_lat = float(end_lat)
+        end_lon = float(end_lon)
+    except ValueError:
+        return jsonify({"status": "error", "message": "Invalid coordinates format"}), 400
+
+    result = evps_adapter.spawn_ev_from_geo(start_lon, start_lat, end_lon, end_lat, ev_id=ev_id)
+    return jsonify(result)
+
+@app.route('/api/evps/spawn_random', methods=['POST'])
+def spawn_random_ev():
+    data = request.get_json(silent=True) or {}
+    ev_id = data.get('ev_id')
+    result = evps_adapter.spawn_random_ev(ev_id=ev_id)
+    return jsonify(result)
+
 @app.route('/api/simulation/topology', methods=['GET'])
 def get_topology():
     """Get the network topology (intersections, lanes, edges)"""
     result = sim_controller.get_network_topology()
     return jsonify(result)
+
+@app.route('/api/network/geojson', methods=['GET'])
+def get_network_geojson():
+    """Get the raw road network as a valid GeoJSON FeatureCollection"""
+    result = sim_controller.get_network_geojson()
+    if "error" in result:
+        return jsonify({"status": "error", "message": result["error"]}), 500
+    return jsonify(result)
+
 
 
 # ============================================================================

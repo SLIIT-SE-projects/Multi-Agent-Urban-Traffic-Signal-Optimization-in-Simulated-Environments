@@ -15,6 +15,9 @@ class EVPSAdapter:
         self.active = False # Controlled by dashboard toggle
         self.ws_connections = set() # Controlled by driver app and dashboard
         
+        self._known_junctions = None
+        self._pending_track_vehicle = None
+        
         print("EVPS Adapter: Loading AI Models...")
         current_dir = os.path.dirname(os.path.abspath(__file__))
         project_root = os.path.abspath(os.path.join(current_dir, "../../../"))
@@ -84,6 +87,15 @@ class EVPSAdapter:
             # --- 3. PRESENTATION: Return data only for the selected EV to the App ---
             self._broadcast_status(active=True)
 
+            # Apply pending camera track
+            if self._pending_track_vehicle is not None:
+                if self._pending_track_vehicle in traci.vehicle.getIDList():
+                    try:
+                        traci.gui.trackVehicle("View #0", self._pending_track_vehicle)
+                        traci.gui.setZoom("View #0", 600)
+                    except: pass
+                    self._pending_track_vehicle = None
+
         except Exception as e:
             print(f"EVPS Sim Error: {e}")
 
@@ -91,16 +103,142 @@ class EVPSAdapter:
         """Called by Flutter App / WS to change the UI Focus."""
         print(f"EVPS Adapter: UI Focus switched to {new_ev_id}")
         self.ev_id = new_ev_id
-        try:
-            traci.gui.trackVehicle("View #0", self.ev_id)
-            traci.gui.setZoom("View #0", 600)
-        except: pass
+        # Delay tracking until we are sure it's physically in the sim
+        self._pending_track_vehicle = new_ev_id
 
     def set_ev_priority(self, target_ev_id, new_priority):
         """Called by Flutter App to dynamically change an EV's dispatch priority."""
         if target_ev_id in self.fleet:
             self.fleet[target_ev_id]["priority"] = int(new_priority)
             print(f"EVPS Adapter: Elevated {target_ev_id} to Priority Level {new_priority}")
+
+    def spawn_ev_from_geo(self, start_lon, start_lat, end_lon, end_lat, ev_id=None):
+        """Called via API to spawn a new EV dynamically using geographic coordinates."""
+        try:
+            # 1. Convert Geographic Coords to SUMO Edge IDs
+            start_edge_info = traci.simulation.convertRoad(start_lon, start_lat, isGeo=True)
+            end_edge_info = traci.simulation.convertRoad(end_lon, end_lat, isGeo=True)
+            
+            start_edge = start_edge_info[0]
+            end_edge = end_edge_info[0]
+
+            if not start_edge or not end_edge:
+                return {"status": "error", "message": "Could not map coordinates to valid edges."}
+
+            # 2. Find intermediate route
+            route_path = traci.simulation.findRoute(start_edge, end_edge)
+            if not route_path.edges:
+                return {"status": "error", "message": "No valid route found between selected points."}
+
+            import time
+            timestamp = int(time.time() * 1000)
+            route_id = f"route_dynamic_ev_{timestamp}"
+            
+            if ev_id and str(ev_id).strip():
+                base_id = str(ev_id).strip()
+                if not base_id.startswith("EV_"):
+                    veh_id = f"EV_{base_id}"
+                else:
+                    veh_id = base_id
+            else:
+                veh_id = f"EV_Dynamic_{timestamp}"
+
+            # 3. Add to TraCI Simulation
+            traci.route.add(route_id, route_path.edges)
+            try:
+                traci.vehicle.add(veh_id, route_id, typeID="ambulance", depart="now")
+            except traci.exceptions.TraCIException:
+                traci.vehicle.add(veh_id, route_id, depart="now")
+
+            print(f"EVPS Adapter: Successfully spawned {veh_id}")
+            self.switch_vehicle(veh_id)
+            
+            return {
+                "status": "success", 
+                "message": f"Successfully dispatched {veh_id}.",
+                "vehicle_id": veh_id
+            }
+        except Exception as e:
+            error_msg = str(e)
+            if "Invalid departure edge" in error_msg:
+                error_msg = "Selected road is restricted for emergency vehicles. Please select a different map location."
+            print(f"EVPS Adapter: Error spawning EV - {error_msg}")
+            return {"status": "error", "message": error_msg}
+
+
+    def spawn_random_ev(self, ev_id=None):
+        """Called via API to spawn a new EV dynamically on a random valid route."""
+        try:
+            edges = traci.edge.getIDList()
+            # Filter out internal edges
+            valid_edges = [e for e in edges if not e.startswith(":")]
+            
+            if not valid_edges:
+                return {"status": "error", "message": "No valid edges found in the network."}
+
+            import random
+            import time
+            max_attempts = 20
+            
+            for attempt in range(max_attempts):
+                start_edge = random.choice(valid_edges)
+                end_edge = random.choice(valid_edges)
+                if start_edge == end_edge:
+                    continue
+                
+                import libsumo
+                import sys
+                import io
+                
+                # Check for path existence to suppress SUMO C++ warning output where possible
+                try:
+                    route_path = traci.simulation.findRoute(start_edge, end_edge)
+                except Exception:
+                    continue
+
+                if not route_path or not route_path.edges:
+                    continue
+                
+                timestamp = int(time.time() * 1000) + attempt
+                route_id = f"route_random_ev_{timestamp}"
+                
+                if ev_id and str(ev_id).strip():
+                    base_id = str(ev_id).strip()
+                    if not base_id.startswith("EV_"):
+                        veh_id = f"EV_{base_id}"
+                    else:
+                        veh_id = base_id
+                else:
+                    veh_id = f"EV_Random_{timestamp}"
+
+                # Add to TraCI Simulation
+                try:
+                    traci.route.add(route_id, route_path.edges)
+                    try:
+                        traci.vehicle.add(veh_id, route_id, typeID="ambulance", depart="now")
+                    except traci.exceptions.TraCIException:
+                        traci.vehicle.add(veh_id, route_id, depart="now")
+
+                    print(f"EVPS Adapter: Successfully spawned random EV {veh_id}")
+                    self.switch_vehicle(veh_id)
+                    
+                    return {
+                        "status": "success", 
+                        "message": f"Successfully dispatched {veh_id} on a random route.",
+                        "vehicle_id": veh_id
+                    }
+                except traci.exceptions.TraCIException:
+                    # Invalid departure edge for vehicle, remove route implicitly if failed, retry
+                    continue
+
+            return {"status": "error", "message": "Failed to find a valid random route and spawn vehicle after multiple attempts."}
+        except Exception as e:
+            error_msg = str(e)
+            if "Invalid departure edge" in error_msg:
+                error_msg = "Simulation automatically generated a restricted path. Please click Quick Dispatch again."
+            print(f"EVPS Adapter: Error spawning random EV - {error_msg}")
+            return {"status": "error", "message": error_msg}
+
 
     def _broadcast_status(self, active):
         if not self.ws_connections: return
@@ -138,21 +276,41 @@ class EVPSAdapter:
                 self.fleet[ev] = {
                     "buffer": deque(maxlen=self.sequence_length),
                     "smoothed_eta": None,
+                    "target_tls": None,
                     "priority": random.choice([1, 2]), # Default to Standard or Medium
                     "safety_blocked": False,
                     "speed": 0.0
                 }
             
+            fleet_ev = self.fleet[ev]
+            
+            # Check if target light has changed to reset buffer
+            try:
+                next_tls_info = traci.vehicle.getNextTLS(ev)
+                current_tls = next_tls_info[0][0] if next_tls_info else None
+            except:
+                current_tls = None
+
+            if fleet_ev["target_tls"] is not None and fleet_ev["target_tls"] != current_tls:
+                fleet_ev["buffer"].clear()
+                fleet_ev["smoothed_eta"] = None
+                print(f"[DEBUG ETA] {ev} target light changed (was {fleet_ev['target_tls']}, now {current_tls}). Flushed buffer.")
+            
+            fleet_ev["target_tls"] = current_tls
+
             # Extract features for ETA Prediction
             if self.model:
                 features = self._get_live_features(ev)
                 if features:
-                    fleet_ev = self.fleet[ev]
                     fleet_ev["buffer"].append(features)
                     fleet_ev["speed"] = features[0]
+                    current_dist = features[2]
                     
+                    if current_tls is None or current_dist < 15.0:
+                        fleet_ev["smoothed_eta"] = 0.0
+                        print(f"[DEBUG ETA] {ev} bypassed AI. Dist: {current_dist:.1f}m, TLS: {current_tls}. Forced ETA to 0.0")
                     # Predict ETA if buffer is full
-                    if len(fleet_ev["buffer"]) == self.sequence_length:
+                    elif len(fleet_ev["buffer"]) == self.sequence_length:
                         raw_eta = self._predict_eta(ev)
                         if fleet_ev["smoothed_eta"] is None: 
                             fleet_ev["smoothed_eta"] = raw_eta
@@ -327,7 +485,12 @@ class EVPSAdapter:
             accel = traci.vehicle.getAcceleration(ev_id)
             lane_id = traci.vehicle.getLaneID(ev_id)
             pos = traci.vehicle.getLanePosition(ev_id)
-            try: dist = traci.lane.getLength(lane_id) - pos
+            try: 
+                tls_info = traci.vehicle.getNextTLS(ev_id)
+                if tls_info:
+                    dist = tls_info[0][2]
+                else:
+                    dist = traci.lane.getLength(lane_id) - pos
             except: dist = 0
             queue = traci.lane.getLastStepHaltingNumber(lane_id)
             leader = traci.vehicle.getLeader(ev_id, 200)
@@ -347,7 +510,21 @@ class EVPSAdapter:
             scaled[i] = self.scaler.transform(step_df)[0]
         input_data = scaled.reshape(1, self.sequence_length, 6)
         normalized_eta = self.model.predict(input_data, verbose=0)
-        return self.target_scaler.inverse_transform(normalized_eta)[0][0]
+        unscaled_eta = float(self.target_scaler.inverse_transform(normalized_eta.reshape(-1, 1))[0][0])
+        
+        # Physical bounds sanity check
+        current_features = raw_sequence[-1]
+        dist = current_features[2]
+        
+        # Prevent negative ETA, bound minimum to travel time at max speed (e.g., 25m/s = 90km/h)
+        min_eta = max(0.0, dist / 25.0) 
+        # Cap max ETA to conservative wait time + slow driving
+        max_eta = max(10.0, (dist / 2.0) + 120.0) 
+        
+        final_eta = max(min_eta, min(unscaled_eta, max_eta))
+        
+        print(f"[DEBUG ETA] {ev_id} | Dist: {dist:.1f}m | Speed: {current_features[0]:.1f}m/s | Raw AI ETA: {unscaled_eta:.1f}s | Bounded: {final_eta:.1f}s")
+        return final_eta
 
     def _get_downstream_lane(self, ev_id):
         try:
@@ -410,12 +587,20 @@ class EVPSAdapter:
             is_green_wave = (display_tls_id != "")
             
             # Show ONLY junctions locked by this specific EV on the map
+            if self._known_junctions is None:
+                self._known_junctions = set(traci.junction.getIDList())
+
             active_junctions = []
             for tls_id, owner in self.active_override_tls_ids.items():
                 if owner == self.ev_id:
-                    try:
-                        j_pos = traci.junction.getPosition(tls_id)
-                    except Exception:
+                    j_pos = None
+                    if tls_id in self._known_junctions:
+                        try:
+                            j_pos = traci.junction.getPosition(tls_id)
+                        except Exception:
+                            pass
+                    
+                    if j_pos is None:
                         try:
                             # Fallback if tls_id is not a valid junction ID
                             links = traci.trafficlight.getControlledLinks(tls_id)
@@ -423,17 +608,16 @@ class EVPSAdapter:
                                 in_lane = links[0][0][0]
                                 shape = traci.lane.getShape(in_lane)
                                 j_pos = shape[-1] # Last point of incoming lane
-                            else:
-                                continue
                         except Exception as e:
                             print(f"Failed to resolve position for TLS {tls_id}: {e}")
                             continue
-                    
-                    try:
-                        j_lon, j_lat = traci.simulation.convertGeo(j_pos[0], j_pos[1])
-                        active_junctions.append({"id": tls_id, "lat": j_lat, "lon": j_lon})
-                    except Exception as e:
-                        print(f"Geo conversion failed for {tls_id}: {e}")
+
+                    if j_pos is not None:
+                        try:
+                            j_lon, j_lat = traci.simulation.convertGeo(j_pos[0], j_pos[1])
+                            active_junctions.append({"id": tls_id, "lat": j_lat, "lon": j_lon})
+                        except Exception as e:
+                            print(f"Geo conversion failed for {tls_id}: {e}")
 
             return {
                 "type": "status",
