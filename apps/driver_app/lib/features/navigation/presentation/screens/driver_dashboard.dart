@@ -11,7 +11,14 @@ import '../../../../core/widgets/app_drawer.dart';
 import '../../../../core/widgets/custom_floating_app_bar.dart';
 
 class DriverDashboard extends StatefulWidget {
-  const DriverDashboard({super.key});
+  final String evId;
+  final bool isLocked;
+
+  const DriverDashboard({
+    super.key,
+    this.evId = AppConstants.defaultEvId,
+    this.isLocked = false,
+  });
 
   @override
   State<DriverDashboard> createState() => _DriverDashboardState();
@@ -22,14 +29,19 @@ class _DriverDashboardState extends State<DriverDashboard> {
   final MapController _mapController = MapController();
 
   // App State
-  String currentEvId = AppConstants.defaultEvId;
+  late String currentEvId;
   VehicleStatus _status = VehicleStatus.empty();
   bool hasData = false;
 
   @override
   void initState() {
     super.initState();
+    currentEvId = widget.evId;
     _webSocketService = WebSocketService();
+    // switchVehicle ensures backend tracks this newly provided test EV ID, if needed.
+    if (widget.evId != AppConstants.defaultEvId) {
+      _webSocketService.switchVehicle(widget.evId);
+    }
   }
 
   @override
@@ -100,41 +112,42 @@ class _DriverDashboardState extends State<DriverDashboard> {
                     ),
                   ),
                   actions: [
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(20),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black.withOpacity(0.2),
-                            blurRadius: 8,
-                            offset: const Offset(0, 2),
+                    if (!widget.isLocked)
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(20),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withOpacity(0.2),
+                              blurRadius: 8,
+                              offset: const Offset(0, 2),
+                            ),
+                          ],
+                        ),
+                        child: DropdownButtonHideUnderline(
+                          child: DropdownButton<String>(
+                            value: currentEvId,
+                            icon: const Icon(Icons.keyboard_arrow_down, color: Color(0xFF2ECC71)),
+                            style: const TextStyle(
+                              color: Colors.black87,
+                              fontWeight: FontWeight.bold,
+                            ),
+                            items: [
+                              ..._status.activeFleet,
+                              if (!_status.activeFleet.contains(currentEvId)) currentEvId,
+                            ].map((id) => DropdownMenuItem(
+                                  value: id,
+                                  child: Text(!_status.activeFleet.contains(id) ? "$id (Offline)" : id),
+                                ))
+                                .toList(),
+                            onChanged: (val) {
+                              if (val != null) _switchVehicle(val);
+                            },
                           ),
-                        ],
-                      ),
-                      child: DropdownButtonHideUnderline(
-                        child: DropdownButton<String>(
-                          value: currentEvId,
-                          icon: const Icon(Icons.keyboard_arrow_down, color: Color(0xFF2ECC71)),
-                          style: const TextStyle(
-                            color: Colors.black87,
-                            fontWeight: FontWeight.bold,
-                          ),
-                          items: [
-                            ..._status.activeFleet,
-                            if (!_status.activeFleet.contains(currentEvId)) currentEvId,
-                          ].map((id) => DropdownMenuItem(
-                                value: id,
-                                child: Text(!_status.activeFleet.contains(id) ? "$id (Offline)" : id),
-                              ))
-                              .toList(),
-                          onChanged: (val) {
-                            if (val != null) _switchVehicle(val);
-                          },
                         ),
                       ),
-                    ),
                   ],
                 ),
               ),

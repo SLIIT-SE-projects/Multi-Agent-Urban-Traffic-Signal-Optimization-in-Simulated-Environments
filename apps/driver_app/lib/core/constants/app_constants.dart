@@ -7,5 +7,5 @@ class AppConstants {
   static const String defaultEvId = 'EV_0';
 
   // Map Constants - Colombo/Rajagiriya area
-  static const LatLng defaultMapCenter = LatLng(6.9080, 79.8970);
+  static const LatLng defaultMapCenter = LatLng(7.166139, 79.893583);
 }

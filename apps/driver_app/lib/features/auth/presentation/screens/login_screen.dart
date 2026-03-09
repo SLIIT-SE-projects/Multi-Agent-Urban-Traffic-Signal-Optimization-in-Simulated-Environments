@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../../../core/constants/app_constants.dart';
 import '../../../../features/trip/presentation/screens/trip_setup_screen.dart';
+import '../../../../features/navigation/presentation/screens/driver_dashboard.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -23,12 +24,20 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   void _handleLogin() {
-    // Logic: Accept any email/password and navigate
-    Navigator.of(context).pushReplacement(
-      MaterialPageRoute(
-        builder: (context) => const TripSetupScreen(),
-      ),
-    );
+    if (_emailController.text == 'admin' && _passwordController.text == 'admin') {
+      Navigator.of(context).pushReplacement(
+        MaterialPageRoute(
+          builder: (context) => const DriverDashboard(evId: 'admin_test_ev'),
+        ),
+      );
+    } else {
+      // Logic: Accept any other email/password and navigate
+      Navigator.of(context).pushReplacement(
+        MaterialPageRoute(
+          builder: (context) => const TripSetupScreen(),
+        ),
+      );
+    }
   }
 
   Future<void> _showNetworkConfigDialog() async {

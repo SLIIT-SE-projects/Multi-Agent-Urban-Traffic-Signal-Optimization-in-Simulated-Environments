@@ -41,6 +41,7 @@ dependencies:
   # For Google Fonts (optional, looks nice)
   google_fonts: ^6.1.0
   shared_preferences: ^2.5.4
+  http: ^1.2.0
 
 dev_dependencies:
   flutter_test:
