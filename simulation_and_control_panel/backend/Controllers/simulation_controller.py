@@ -96,7 +96,7 @@ class SimulationController:
                 j_id = junction.get('id')
                 j_type = junction.get('type')
                 
-                if j_type == "internal": continue # Skip internal junctions
+                if j_type != "traffic_light": continue
 
                 try:
                     x = float(junction.get('x'))
@@ -259,7 +259,7 @@ class SimulationController:
                     continue  # Already transitioning
 
                 current_phase = traci.trafficlight.getPhase(tls_id)
-                next_green = self._get_next_green_phase(current_phase)
+                next_green = self._get_next_green_phase(tls_id, current_phase)
 
                 if next_green == current_phase:
                     continue  # Already on target
@@ -277,13 +277,14 @@ class SimulationController:
             except Exception as e:
                 print(f"Error applying GNN action to {tls_id}: {e}")
 
-    def _get_next_green_phase(self, current_phase, total_phases=4):
-        """
-        Advances to next green phase, skipping yellow phases.
-        Matches get_next_green_phase() from training exactly.
-        """
+    def _get_next_green_phase(self, tls_id, current_phase):
+        try:
+            logics = traci.trafficlight.getAllProgramLogics(tls_id)
+            total_phases = len(logics[0].phases) if logics else 4
+        except Exception:
+            total_phases = 4
         next_phase = (current_phase + 1) % total_phases
-        if next_phase % 2 != 0:  # odd phases are yellow in your SUMO setup
+        if next_phase % 2 != 0:
             next_phase = (next_phase + 1) % total_phases
         return next_phase
 

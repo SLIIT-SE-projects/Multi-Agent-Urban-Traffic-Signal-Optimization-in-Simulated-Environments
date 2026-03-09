@@ -49,6 +49,18 @@ class TrafficGraphBuilder:
         # --- 2. Build Static Edges ---
         self.static_edges = self._build_static_topology()
 
+        # FIX: Store actual phase count per TLS for correct normalization.
+        # Katunayake joinedG TLS have 6 or 8 phases; model trained on 4.
+        # raw_p_idx % 4 corrupts observations for phases >= 4.
+        self.tls_phase_counts = {}
+        for tls in self.tls_objects:
+            programs = tls.getPrograms()
+            if programs:
+                phases = list(programs.values())[0].getPhases()
+                self.tls_phase_counts[tls.getID()] = len(phases)
+            else:
+                self.tls_phase_counts[tls.getID()] = GraphConfig.NUM_SIGNAL_PHASES
+
         # [CRITICAL FIX 2]: Initialize Temporal Memory Trackers
         self.last_phases = {}
         self.phase_durations = {}
@@ -148,7 +160,16 @@ class TrafficGraphBuilder:
                 
                 # Features
                 raw_p_idx = int(info['phase_index'])
-                p_idx = raw_p_idx % GraphConfig.NUM_SIGNAL_PHASES
+                num_phases = self.tls_phase_counts.get(tls_id, GraphConfig.NUM_SIGNAL_PHASES)
+                N = GraphConfig.NUM_SIGNAL_PHASES  # = 4
+                if num_phases <= N:
+                    p_idx = raw_p_idx % N
+                else:
+                    # Map 6/8-phase TLS into 4 buckets preserving green/yellow semantics.
+                    # Even raw index = green, odd = yellow. Pair index cycles 0,1.
+                    pair_index = (raw_p_idx // 2) % (N // 2)
+                    is_yellow  = (raw_p_idx % 2 == 1)
+                    p_idx = pair_index * 2 + (1 if is_yellow else 0)
                 x_inter[idx, p_idx] = 1.0 
                 raw_time_to_switch = float(info.get('time_to_switch', 0.0))
                 x_inter[idx, GraphConfig.NUM_SIGNAL_PHASES] = min(raw_time_to_switch / 60.0, 1.0)
