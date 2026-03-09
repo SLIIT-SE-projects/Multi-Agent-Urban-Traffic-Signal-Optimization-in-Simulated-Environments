@@ -559,7 +559,9 @@ class EVPSAdapter:
                 "priority": 1, "green_wave_active": False, "safety_blocked": False,
                 "tls_id": "", "active_junctions": [],
                 "active_fleet": list(self.fleet.keys()),
-                "fleet": fleet_telemetry
+                "fleet": fleet_telemetry,
+                "active_evs": len(self.fleet),
+                "override_junctions": list(self.active_override_tls_ids.keys())
             }
 
         ev_data = self.fleet[self.ev_id]
@@ -633,7 +635,9 @@ class EVPSAdapter:
                 "tls_id": display_tls_id,
                 "active_junctions": active_junctions,
                 "active_fleet": list(self.fleet.keys()),
-                "fleet": fleet_telemetry
+                "fleet": fleet_telemetry,
+                "active_evs": len(self.fleet),
+                "override_junctions": list(self.active_override_tls_ids.keys())
             }
         except:
-            return {"type": "status", "ev_id": self.ev_id, "active": self.active, "active_fleet": list(self.fleet.keys()), "fleet": fleet_telemetry}
+            return {"type": "status", "ev_id": self.ev_id, "active": self.active, "active_fleet": list(self.fleet.keys()), "fleet": fleet_telemetry, "active_evs": len(self.fleet), "override_junctions": list(self.active_override_tls_ids.keys())}
