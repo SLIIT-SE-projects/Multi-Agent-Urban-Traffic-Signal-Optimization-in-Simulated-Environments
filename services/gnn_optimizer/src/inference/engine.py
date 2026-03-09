@@ -82,7 +82,7 @@ class RealTimeInferenceEngine:
 
                     with torch.no_grad():
                         # Single pass for all 20 samples
-                        batched_logits, _, _ = self.model(
+                        batched_logits, _, _, _ = self.model(
                             batched_data.x_dict, 
                             batched_data.edge_index_dict, 
                             batched_hidden,
@@ -100,7 +100,7 @@ class RealTimeInferenceEngine:
                     self.model.mc_dropout.disable_mc_dropout()
 
                     # 5. Update the actual hidden state for the NEXT time step
-                    _, _, self.hidden_state = self.model(
+                    _, _, self.hidden_state, _ = self.model(
                         data.x_dict, 
                         data.edge_index_dict, 
                         self.hidden_state,
