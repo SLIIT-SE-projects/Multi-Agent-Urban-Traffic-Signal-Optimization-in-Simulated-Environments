@@ -282,6 +282,19 @@ def unload_optimizer():
     result = sim_controller.unload_optimizer()
     return jsonify(result)
 
+@app.route('/api/optimizer/mpc/internals', methods=['GET'])
+def get_mpc_internals():
+    """Return last MPC optimizer decisions + config for the dashboard Internals tab."""
+    optimizer = getattr(sim_controller, 'optimizer', None)
+    if optimizer is None or not hasattr(optimizer, 'get_internals'):
+        return jsonify({"status": "idle", "message": "MPC optimizer not loaded"})
+    try:
+        data = optimizer.get_internals()
+        data["status"] = "active"
+        return jsonify(data)
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)})
+
 @app.route('/api/evps/toggle', methods=['POST'])
 def toggle_evps():
     data = request.get_json(silent=True) or {}

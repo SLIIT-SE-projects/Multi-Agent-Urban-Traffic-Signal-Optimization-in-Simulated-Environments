@@ -34,6 +34,7 @@ class MPCTrafficOptimizer:
         # Determine all traffic lights and their configs
         self.controllers = {} # tls_id -> MPCController
         self.cycle_plans = {} # tls_id -> { "phases": [durations], "start_step": int }
+        self.last_decisions = {} # tls_id -> { max_queue, green_times, lstm_mode }
         
         # Default configs
         self.mpc_cfg = MPCConfig(
@@ -67,60 +68,68 @@ class MPCTrafficOptimizer:
                 num_phases = len(phases)
                 
                 # 2. Get Lanes & Mapping
-                # controlled_links: list of list of (lane_id, valid, right_of_way)
-                # index corresponds to link index in phase state string
                 links = traci.trafficlight.getControlledLinks(tls_id)
-                
+
+                # ── Identify green-only phases ───────────────────────────────
+                # A green phase = any phase that has at least one 'g' or 'G' and
+                # no 'y'/'Y' in the state string (yellow indicator).
+                # We plan durations ONLY for green phases — yellow durations are
+                # handled by SUMO's built-in minimum yellow times, not by MPC.
+                green_phase_sumo_indices = [
+                    i for i, p in enumerate(phases)
+                    if 'g' in p.state.lower() and 'y' not in p.state.lower()
+                ]
+                num_green_phases = len(green_phase_sumo_indices)
+
+                if num_green_phases == 0:
+                    print(f"⚠️ MPC Warning: No green phases found for {tls_id} — skipping.")
+                    continue
+
+                # Reverse map: SUMO phase index → green phase rank (0, 1, 2, …)
+                sumo_to_rank = {sumo_idx: rank for rank, sumo_idx in enumerate(green_phase_sumo_indices)}
+
                 lane_ids = []
-                lane_phase_indices = []
-                
-                # We need to map each lane to the phase index that gives it valid Green.
-                # Heuristic: Find first phase where this lane has 'G' or 'g'
-                
+                lane_phase_indices = []   # stores GREEN-PHASE RANK (not SUMO phase index)
                 seen_lanes = set()
-                
-                # links is a list of connections. Some lanes appear multiple times (left, straight, right).
-                # We only need to control each unique incoming lane once.
+
                 for link_idx, connection_list in enumerate(links):
-                    if not connection_list: continue
-                    
-                    # Usually just one connection per link index, but can be multiple
+                    if not connection_list:
+                        continue
                     for (lane_id, valid, row) in connection_list:
                         if lane_id in seen_lanes:
                             continue
-                        
-                        # Find which phase lights this link green
-                        my_green_phase = -1
+                        # Find which SUMO phase lights this link green
+                        my_sumo_green_phase = -1
                         for p_idx, p in enumerate(phases):
                             state = p.state
                             if link_idx < len(state):
                                 char = state[link_idx].lower()
                                 if char == 'g':
-                                    my_green_phase = p_idx
+                                    my_sumo_green_phase = p_idx
                                     break
-                        
-                        # If meaningful green phase found (and not just always red)
-                        if my_green_phase != -1:
+
+                        # Map to green-phase rank; skip if not in any green phase
+                        if my_sumo_green_phase != -1 and my_sumo_green_phase in sumo_to_rank:
                             lane_ids.append(lane_id)
-                            lane_phase_indices.append(my_green_phase)
+                            lane_phase_indices.append(sumo_to_rank[my_sumo_green_phase])
                             seen_lanes.add(lane_id)
 
                 if not lane_ids:
                     print(f"⚠️ MPC Warning: No valid controlled lanes found for {tls_id}")
                     continue
 
-                # 3. Create Controller
+                # 3. Create Controller — num_phases = green phases only
                 try:
                     controller = MPCController(
                         mpc_config=self.mpc_cfg,
                         opt_config=self.opt_cfg,
                         lane_ids=lane_ids,
-                        num_phases=num_phases,
+                        num_phases=num_green_phases,
                         lane_phase_indices=lane_phase_indices
                     )
                     self.controllers[tls_id] = {
                         "model": controller,
-                        "green_indices": sorted(list(set(lane_phase_indices))), # Phases that are actually greens
+                        "green_indices": green_phase_sumo_indices,   # SUMO phase indices (for execution)
                         "all_phases": phases
                     }
                     self.cycle_plans[tls_id] = None
@@ -140,21 +149,39 @@ class MPCTrafficOptimizer:
             
             self.all_lanes_ordered = sorted(list(all_lanes_set))
             
-            # 2. Path to Model
+            # 2. Path to Model — auto-select by scenario name
             data_dir = os.path.abspath(os.path.join(mpc_service_path, "../data"))
-            model_path = os.path.join(data_dir, "model.pth")
-            lane_ids_path = os.path.join(data_dir, "lane_ids.json")
-            
+
+            # Derive scenario name from the net file path (e.g. katunayake.net.xml → katunayake)
+            scenario_name = "grid3x3"  # default
+            if self.net_path:
+                base = os.path.basename(self.net_path)          # katunayake.net.xml
+                scenario_name = base.replace(".net.xml", "")    # katunayake
+
+            # Map scenario → model/lane_ids filenames
+            if scenario_name == "grid3x3":
+                model_filename    = "model.pth"
+                lane_ids_filename = "lane_ids.json"
+            else:
+                model_filename    = f"model_{scenario_name}.pth"
+                lane_ids_filename = f"lane_ids_{scenario_name}.json"
+
+            model_path     = os.path.join(data_dir, model_filename)
+            lane_ids_path  = os.path.join(data_dir, lane_ids_filename)
+
             import json
             if os.path.exists(lane_ids_path):
                 with open(lane_ids_path, "r") as f:
                     self.all_lanes_ordered = json.load(f)
             else:
                 self.all_lanes_ordered = sorted(list(all_lanes_set))
-            
+
             print(f"🔮 Initializing Demand Predictor for {len(self.all_lanes_ordered)} lanes...")
+            print(f"   Scenario : {scenario_name}")
             print(f"   Model Path: {model_path}")
-            
+            if not os.path.exists(model_path):
+                print(f"   ⚠️  Model file not found — running in Heuristic mode until trained.")
+
             self.predictor = DemandPredictor(self.mpc_cfg, self.all_lanes_ordered, model_path)
             
         except Exception as e:
@@ -216,7 +243,11 @@ class MPCTrafficOptimizer:
             # 1. Do we have an active plan?
             if plan:
                 elapsed = current_step - plan["start_time"]
-                cycle_duration = sum(plan["durations"])
+                # Fix: Total cycle duration must include yellow lost time.
+                # Previously, plan["durations"] only summed to available_green (e.g. 27s),
+                # so the 45s cycle was expiring at 27s, chopping off the last phases!
+                total_yellow_time = self.mpc_cfg.yellow_time * len(data["green_indices"])
+                cycle_duration = sum(plan["durations"]) + total_yellow_time
 
                 if elapsed >= cycle_duration:
                     # Plan finished → Re-optimize
@@ -266,9 +297,15 @@ class MPCTrafficOptimizer:
                 for i, lid in enumerate(model.lane_ids):
                     if lid in global_demand_map:
                         full_pred = global_demand_map[lid]
-                        local_demand[i, :] = full_pred[:model.N]
+                        # FIX: full_pred is in [0, 1] representing Halting/20 (queue).
+                        # MPC treats demand as 'arrivals per step'.
+                        # A full queue of 20 shouldn't mean 20 cars arrive per second (72000 veh/hr).
+                        # We scale it to a realistic maximum arrival rate, e.g. 0.2 cars/second
+                        # based on how congested the lane currently is.
+                        scaled_arrivals = np.clip(full_pred[:model.N] * 0.20, 0.01, 0.40)
+                        local_demand[i, :] = scaled_arrivals
                     else:
-                        local_demand[i, :] = 0.25  # moderate fallback
+                        local_demand[i, :] = 0.10  # moderate fallback arrivals
 
                 # ── Per-lane saturation flow ─────────────────────────────────
                 sat_flows = {}
@@ -308,6 +345,17 @@ class MPCTrafficOptimizer:
                 gt_str = ", ".join(f"{g:.1f}s" for g in green_times)
                 print(f"🚦 MPC[{tls_id}] Step:{int(current_step)} MaxQ:{max_q}veh → [{gt_str}]")
 
+                # Store decision for dashboard Internals tab
+                lstm_mode = "neural_net" if (
+                    self.predictor and self.predictor.model_loaded
+                    and len(self.predictor.history_buffer) >= self.predictor.history_steps
+                ) else "heuristic"
+                self.last_decisions[tls_id] = {
+                    "max_queue": int(max_q),
+                    "green_times": [round(g, 1) for g in green_times],
+                    "lstm_mode": lstm_mode,
+                }
+
                 # Fix C: Start phase 0 of the new plan immediately
                 # (first phase always needs an explicit switch)
                 actions[tls_id] = 0
@@ -317,12 +365,56 @@ class MPCTrafficOptimizer:
 
     def _get_phase_from_plan(self, plan, elapsed):
         cumulative = 0
+        yellow_duration = self.mpc_cfg.yellow_time
         for i, duration in enumerate(plan["durations"]):
-            cumulative += duration
+            # Each phase's command is held for (GreenTime + YellowTime)
+            # This ensures SUMO gets exactly GreenTime seconds of actual green
+            # since the first 'yellow_duration' seconds will be spent in transition.
+            cumulative += duration + yellow_duration
             if elapsed < cumulative:
                 return plan["phases"][i]
         return plan["phases"][-1]
 
+    def get_internals(self):
+        """Return last optimizer decisions + config for the dashboard Internals tab."""
+        intersections = []
+        for tls_id, dec in self.last_decisions.items():
+            intersections.append({
+                "id": tls_id,
+                "max_queue": dec["max_queue"],
+                "green_times": dec["green_times"],
+                "lstm_mode": dec["lstm_mode"],
+            })
+        # Sort by intersection id
+        intersections.sort(key=lambda x: x["id"])
+
+        # Derive config from first controller if available
+        cfg = {}
+        if self.controllers:
+            first = next(iter(self.controllers.values()))["model"]
+            cfg = {
+                "cycle_time": getattr(first, 'CycleTime', 45),
+                "min_green": getattr(first.cfg, 'min_green_time', 5),
+                "max_green": getattr(first.cfg, 'max_green_time', 60),
+                "horizon": getattr(first, 'N', 20),
+                "control_horizon": getattr(first, 'Nc', 5),
+                "w_queue": getattr(self.opt_cfg, 'weight_queue', 5.0),
+                "w_switch": getattr(self.opt_cfg, 'weight_switch', 2.0),
+            }
+
+        overall_lstm = "neural_net"
+        if self.predictor and not self.predictor.model_loaded:
+            overall_lstm = "heuristic"
+
+        return {
+            "lstm_mode": overall_lstm,
+            "n_lanes": len(self.all_lanes_ordered),
+            "n_intersections": len(self.controllers),
+            "intersections": intersections,
+            "config": cfg,
+        }
+
     def reset(self):
         self.controllers = {}
         self.cycle_plans = {}
+        self.last_decisions = {}
