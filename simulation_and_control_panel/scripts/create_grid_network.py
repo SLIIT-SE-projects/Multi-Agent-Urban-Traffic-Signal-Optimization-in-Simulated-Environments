@@ -211,7 +211,7 @@ files = {
     </time>
     
     <processing>
-        <time-to-teleport value="-1"/>
+        <time-to-teleport value="300"/>
         <max-depart-delay value="300"/>
         <ignore-route-errors value="true"/>
     </processing>
