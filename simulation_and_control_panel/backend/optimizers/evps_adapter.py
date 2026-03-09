@@ -15,6 +15,9 @@ class EVPSAdapter:
         self.active = False # Controlled by dashboard toggle
         self.ws_connections = set() # Controlled by driver app and dashboard
         
+        self._known_junctions = None
+        self._pending_track_vehicle = None
+        
         print("EVPS Adapter: Loading AI Models...")
         current_dir = os.path.dirname(os.path.abspath(__file__))
         project_root = os.path.abspath(os.path.join(current_dir, "../../../"))
@@ -84,6 +87,15 @@ class EVPSAdapter:
             # --- 3. PRESENTATION: Return data only for the selected EV to the App ---
             self._broadcast_status(active=True)
 
+            # Apply pending camera track
+            if self._pending_track_vehicle is not None:
+                if self._pending_track_vehicle in traci.vehicle.getIDList():
+                    try:
+                        traci.gui.trackVehicle("View #0", self._pending_track_vehicle)
+                        traci.gui.setZoom("View #0", 600)
+                    except: pass
+                    self._pending_track_vehicle = None
+
         except Exception as e:
             print(f"EVPS Sim Error: {e}")
 
@@ -91,10 +103,8 @@ class EVPSAdapter:
         """Called by Flutter App / WS to change the UI Focus."""
         print(f"EVPS Adapter: UI Focus switched to {new_ev_id}")
         self.ev_id = new_ev_id
-        try:
-            traci.gui.trackVehicle("View #0", self.ev_id)
-            traci.gui.setZoom("View #0", 600)
-        except: pass
+        # Delay tracking until we are sure it's physically in the sim
+        self._pending_track_vehicle = new_ev_id
 
     def set_ev_priority(self, target_ev_id, new_priority):
         """Called by Flutter App to dynamically change an EV's dispatch priority."""
@@ -176,7 +186,16 @@ class EVPSAdapter:
                 if start_edge == end_edge:
                     continue
                 
-                route_path = traci.simulation.findRoute(start_edge, end_edge)
+                import libsumo
+                import sys
+                import io
+                
+                # Check for path existence to suppress SUMO C++ warning output where possible
+                try:
+                    route_path = traci.simulation.findRoute(start_edge, end_edge)
+                except Exception:
+                    continue
+
                 if not route_path or not route_path.edges:
                     continue
                 
@@ -568,12 +587,20 @@ class EVPSAdapter:
             is_green_wave = (display_tls_id != "")
             
             # Show ONLY junctions locked by this specific EV on the map
+            if self._known_junctions is None:
+                self._known_junctions = set(traci.junction.getIDList())
+
             active_junctions = []
             for tls_id, owner in self.active_override_tls_ids.items():
                 if owner == self.ev_id:
-                    try:
-                        j_pos = traci.junction.getPosition(tls_id)
-                    except Exception:
+                    j_pos = None
+                    if tls_id in self._known_junctions:
+                        try:
+                            j_pos = traci.junction.getPosition(tls_id)
+                        except Exception:
+                            pass
+                    
+                    if j_pos is None:
                         try:
                             # Fallback if tls_id is not a valid junction ID
                             links = traci.trafficlight.getControlledLinks(tls_id)
@@ -581,17 +608,16 @@ class EVPSAdapter:
                                 in_lane = links[0][0][0]
                                 shape = traci.lane.getShape(in_lane)
                                 j_pos = shape[-1] # Last point of incoming lane
-                            else:
-                                continue
                         except Exception as e:
                             print(f"Failed to resolve position for TLS {tls_id}: {e}")
                             continue
-                    
-                    try:
-                        j_lon, j_lat = traci.simulation.convertGeo(j_pos[0], j_pos[1])
-                        active_junctions.append({"id": tls_id, "lat": j_lat, "lon": j_lon})
-                    except Exception as e:
-                        print(f"Geo conversion failed for {tls_id}: {e}")
+
+                    if j_pos is not None:
+                        try:
+                            j_lon, j_lat = traci.simulation.convertGeo(j_pos[0], j_pos[1])
+                            active_junctions.append({"id": tls_id, "lat": j_lat, "lon": j_lon})
+                        except Exception as e:
+                            print(f"Geo conversion failed for {tls_id}: {e}")
 
             return {
                 "type": "status",
