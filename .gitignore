@@ -37,8 +37,6 @@ temp/
 saved_states/
 
 # Model files
-*.pt
-*.pth
 # *.pkl
 *.ckpt
 # *.h5
