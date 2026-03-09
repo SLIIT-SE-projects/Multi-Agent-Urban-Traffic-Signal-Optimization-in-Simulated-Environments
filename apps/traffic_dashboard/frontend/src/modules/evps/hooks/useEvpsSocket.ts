@@ -54,8 +54,8 @@ export const useEvpsSocket = () => {
                     const fleetData = response.fleet || [];
 
                     setMetrics({
-                        active_evs: response.active_fleet?.length || 0,
-                        override_junctions: response.active_junctions?.map((j: any) => j.id) || [],
+                        active_evs: response.active_evs || response.active_fleet?.length || 0,
+                        override_junctions: response.override_junctions || response.active_junctions?.map((j: any) => j.id) || [],
                         evps_status: response.active ? 'Active' : 'Idle',
                         fleet: fleetData
                     });

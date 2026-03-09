@@ -323,6 +323,8 @@ def spawn_ev_from_geo():
         return jsonify({"status": "error", "message": "Invalid coordinates format"}), 400
 
     result = evps_adapter.spawn_ev_from_geo(start_lon, start_lat, end_lon, end_lat, ev_id=ev_id)
+    if result.get("status") == "error":
+        return jsonify(result), 400
     return jsonify(result)
 
 @app.route('/api/evps/spawn_random', methods=['POST'])

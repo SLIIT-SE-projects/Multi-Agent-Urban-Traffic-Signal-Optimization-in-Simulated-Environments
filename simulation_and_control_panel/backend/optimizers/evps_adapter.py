@@ -126,9 +126,13 @@ class EVPSAdapter:
                 return {"status": "error", "message": "Could not map coordinates to valid edges."}
 
             # 2. Find intermediate route
-            route_path = traci.simulation.findRoute(start_edge, end_edge)
-            if not route_path.edges:
-                return {"status": "error", "message": "No valid route found between selected points."}
+            try:
+                route_path = traci.simulation.findRoute(start_edge, end_edge)
+                if not route_path or not route_path.edges:
+                    return {"status": "error", "message": "No valid route found between selected points."}
+            except traci.exceptions.TraCIException as e:
+                print(f"EVPS Adapter: Route finding failed: {e}")
+                return {"status": "error", "message": "Failed to compute a valid route between these locations."}
 
             import time
             timestamp = int(time.time() * 1000)
@@ -185,15 +189,10 @@ class EVPSAdapter:
                 end_edge = random.choice(valid_edges)
                 if start_edge == end_edge:
                     continue
-                
-                import libsumo
-                import sys
-                import io
-                
-                # Check for path existence to suppress SUMO C++ warning output where possible
+                # Check for path existence
                 try:
                     route_path = traci.simulation.findRoute(start_edge, end_edge)
-                except Exception:
+                except traci.exceptions.TraCIException:
                     continue
 
                 if not route_path or not route_path.edges:
@@ -560,7 +559,9 @@ class EVPSAdapter:
                 "priority": 1, "green_wave_active": False, "safety_blocked": False,
                 "tls_id": "", "active_junctions": [],
                 "active_fleet": list(self.fleet.keys()),
-                "fleet": fleet_telemetry
+                "fleet": fleet_telemetry,
+                "active_evs": len(self.fleet),
+                "override_junctions": list(self.active_override_tls_ids.keys())
             }
 
         ev_data = self.fleet[self.ev_id]
@@ -634,7 +635,9 @@ class EVPSAdapter:
                 "tls_id": display_tls_id,
                 "active_junctions": active_junctions,
                 "active_fleet": list(self.fleet.keys()),
-                "fleet": fleet_telemetry
+                "fleet": fleet_telemetry,
+                "active_evs": len(self.fleet),
+                "override_junctions": list(self.active_override_tls_ids.keys())
             }
         except:
-            return {"type": "status", "ev_id": self.ev_id, "active": self.active, "active_fleet": list(self.fleet.keys()), "fleet": fleet_telemetry}
+            return {"type": "status", "ev_id": self.ev_id, "active": self.active, "active_fleet": list(self.fleet.keys()), "fleet": fleet_telemetry, "active_evs": len(self.fleet), "override_junctions": list(self.active_override_tls_ids.keys())}

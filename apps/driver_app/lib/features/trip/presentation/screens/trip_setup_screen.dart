@@ -66,7 +66,9 @@ class _TripSetupScreenState extends State<TripSetupScreen> {
         }),
       );
 
-      if (response.statusCode == 200 || response.statusCode == 201) {
+      final responseData = jsonDecode(response.body);
+
+      if ((response.statusCode == 200 || response.statusCode == 201) && responseData['status'] == 'success') {
         if (mounted) {
           Navigator.pushReplacement(
             context,
@@ -74,10 +76,11 @@ class _TripSetupScreenState extends State<TripSetupScreen> {
           );
         }
       } else {
+        final errorMsg = responseData['message'] ?? 'Dispatch Failed: Could not spawn vehicle. Ensure coordinates are on valid roads.';
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Dispatch Failed: Could not spawn vehicle. Ensure coordinates are on valid roads.'),
+            SnackBar(
+              content: Text(errorMsg),
               backgroundColor: Colors.red,
             ),
           );
@@ -87,7 +90,7 @@ class _TripSetupScreenState extends State<TripSetupScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('Dispatch Failed: Could not spawn vehicle. Ensure coordinates are on valid roads.'),
+            content: Text('Dispatch Failed: Could not complete the request. Please check the connection.'),
             backgroundColor: Colors.red,
           ),
         );
