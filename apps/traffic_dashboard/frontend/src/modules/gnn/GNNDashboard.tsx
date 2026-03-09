@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Activity, Sliders, FileText, Square, Play, Share2, Layers } from 'lucide-react';
 
-import { useTrafficSocket } from './hooks/useTrafficSocket';
+import { useGnnContext } from './context/GnnContext';
 import GnnMonitorTab from './components/GnnMonitorTab';
 import GnnConfigTab from './components/GnnConfigTab';
 import GnnGraphTab from './components/GnnGraphTab';
@@ -10,19 +10,25 @@ import GnnMessagePassingTab from './components/GnnMessagePassingTab';
 import SystemHealthFooter from './components/SystemHealthFooter';
 
 export default function GNNDashboard() {
+  const { isConnected, isRunning, currentMetrics, dataHistory, handleStart, handleStop } = useGnnContext();
   const [activeSubTab, setActiveSubTab] = useState('monitor');
-  const socketData = useTrafficSocket();
-  const [isRunning, setIsRunning] = useState(false);
+
+  // Package for existing child components that expect a socketData prop
+  const socketData = {
+    isConnected,
+    currentMetrics,
+    dataHistory,
+    handleStart,
+    handleStop,
+  };
 
   const toggleSim = async () => {
     if (isRunning) {
-      await socketData.handleStop();
-      setIsRunning(false);
+      await handleStop();
     } else {
-      await socketData.handleStart();
-      setIsRunning(true);
+      await handleStart();
     }
-  }
+  };
 
   const liveDataTabs = ['monitor', 'passing', 'state', 'graph'];
 
@@ -32,8 +38,8 @@ export default function GNNDashboard() {
         <div>
           <h1 className="text-2xl font-bold text-white flex items-center gap-2">
             GNN Optimizer
-            <span className={`text-xs px-2 py-0.5 rounded-full border ${socketData.isConnected ? 'border-emerald-500/50 text-emerald-400 bg-emerald-500/10' : 'border-rose-500/50 text-rose-400 bg-rose-500/10'}`}>
-              {socketData.isConnected ? 'Online' : 'Offline'}
+            <span className={`text-xs px-2 py-0.5 rounded-full border ${isConnected ? 'border-emerald-500/50 text-emerald-400 bg-emerald-500/10' : 'border-rose-500/50 text-rose-400 bg-rose-500/10'}`}>
+              {isConnected ? 'Online' : 'Offline'}
             </span>
           </h1>
           <p className="text-slate-400 text-sm">Graph Neural Network Model Inference & Control</p>
@@ -95,7 +101,7 @@ export default function GNNDashboard() {
         )}
       </div>
 
-      <SystemHealthFooter socketConnected={socketData.isConnected} />
+      <SystemHealthFooter socketConnected={isConnected} />
     </div>
   );
 }

@@ -1,7 +1,9 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { Activity, Square, Settings, BookMarked, Loader2, ChevronDown, X } from 'lucide-react';
+import { Activity, Square, Settings, BookMarked, Loader2, ChevronDown, X, BarChart2, Cpu } from 'lucide-react';
 import MpcMonitorTab from './components/MpcMonitorTab';
 import MpcConfigTab from './components/MpcConfigTab';
+import MpcAnalysisTab from './components/MpcAnalysisTab';
+import MpcInternalsTab from './components/MpcInternalsTab';
 
 const BASE_URL = '/api';
 
@@ -111,28 +113,62 @@ function RecordDialog({ initialScenario, scenarios, onConfirm, onCancel }: Recor
 }
 
 
+// ── Global State to persist across tab switches ──────────────────────────────
+let g_activeSubTab = 'monitor';
+let g_mode: DashboardMode = 'idle';
+let g_status: any = null;
+let g_isConnected = false;
+let g_mpcHistory: any[] = [];
+let g_baselineData: any[] | null = null;
+let g_baselineMeta: any = null;
+let g_recordStep = 0;
+let g_recordTarget = 500;
+let g_currentScenario = 'grid3x3';
+
 // ── Main Dashboard ────────────────────────────────────────────────────────────
 export function MPCDashboard() {
-    const [activeSubTab, setActiveSubTab] = useState('monitor');
-    const [mode, setMode] = useState<DashboardMode>('idle');
-    const [status, setStatus] = useState<any>(null);
-    const [isConnected, setIsConnected] = useState(false);
+    const [activeSubTab, _setActiveSubTab] = useState(g_activeSubTab);
+    const setActiveSubTab = (v: any) => { g_activeSubTab = v; _setActiveSubTab(v); };
+
+    const [mode, _setMode] = useState<DashboardMode>(g_mode);
+    const setMode = (v: any) => { g_mode = v; _setMode(v); };
+
+    const [status, _setStatus] = useState<any>(g_status);
+    const setStatus = (v: any) => { g_status = v; _setStatus(v); };
+
+    const [isConnected, _setIsConnected] = useState(g_isConnected);
+    const setIsConnected = (v: any) => { g_isConnected = v; _setIsConnected(v); };
 
     // MPC live data — only populated in mpc_active mode
-    const [mpcHistory, setMpcHistory] = useState<any[]>([]);
+    const [mpcHistory, _setMpcHistory] = useState<any[]>(g_mpcHistory);
+    const setMpcHistory = useCallback((action: any) => {
+        _setMpcHistory((prev: any[]) => {
+            const next = typeof action === 'function' ? action(prev) : action;
+            g_mpcHistory = next;
+            return next;
+        });
+    }, []);
 
     // Baseline
-    const [baselineData, setBaselineData] = useState<any[] | null>(null);
-    const [baselineMeta, setBaselineMeta] = useState<any>(null);
+    const [baselineData, _setBaselineData] = useState<any[] | null>(g_baselineData);
+    const setBaselineData = (v: any) => { g_baselineData = v; _setBaselineData(v); };
+
+    const [baselineMeta, _setBaselineMeta] = useState<any>(g_baselineMeta);
+    const setBaselineMeta = (v: any) => { g_baselineMeta = v; _setBaselineMeta(v); };
 
     // Baseline recording progress
-    const [recordStep, setRecordStep] = useState(0);
-    const [recordTarget, setRecordTarget] = useState(500);
+    const [recordStep, _setRecordStep] = useState(g_recordStep);
+    const setRecordStep = (v: any) => { g_recordStep = v; _setRecordStep(v); };
+
+    const [recordTarget, _setRecordTarget] = useState(g_recordTarget);
+    const setRecordTarget = (v: any) => { g_recordTarget = v; _setRecordTarget(v); };
 
     // Record dialog
     const [showRecordDialog, setShowRecordDialog] = useState(false);
     const [availableScenarios, setAvailableScenarios] = useState<string[]>([]);
-    const [currentScenario, setCurrentScenario] = useState<string>('grid3x3');
+
+    const [currentScenario, _setCurrentScenario] = useState<string>(g_currentScenario);
+    const setCurrentScenario = (v: any) => { g_currentScenario = v; _setCurrentScenario(v); };
 
     // Toast
     const [toast, setToast] = useState<{ title: string; message: string; type: 'success' | 'info' | 'error' } | null>(null);
@@ -225,7 +261,7 @@ export function MPCDashboard() {
                 const data = await res.json();
                 setStatus(data);
                 if (data.status === 'success') {
-                    setMpcHistory(prev => {
+                    setMpcHistory((prev: any[]) => {
                         if (prev.length > 0 && prev[prev.length - 1].step === data.step) return prev;
                         const pt: any = {
                             step: data.step,
@@ -303,11 +339,10 @@ export function MPCDashboard() {
 
     const handleStop = useCallback(async () => {
         try {
-            await fetch(`${BASE_URL}/simulation/stop`, { method: 'POST' });
             await fetch(`${BASE_URL}/optimizer/unload`, { method: 'POST' });
         } catch { }
         setMode('idle');
-        showToast('Stopped', 'Simulation stopped. Charts preserved.', 'info');
+        showToast('MPC Deactivated', 'MPC signals removed — simulation continues with baseline.', 'info');
     }, [showToast]);
 
     // ── Derived ───────────────────────────────────────────────────────────────
@@ -385,7 +420,7 @@ export function MPCDashboard() {
                         {mode === 'mpc_active' ? 'MPC Active' : 'Activate MPC'}
                     </button>
 
-                    {/* Stop */}
+                    {/* Deactivate MPC */}
                     <button
                         onClick={handleStop}
                         disabled={mode === 'idle'}
@@ -395,7 +430,7 @@ export function MPCDashboard() {
                                 : 'bg-rose-500/10 text-rose-400 border border-rose-500/50 hover:bg-rose-500/20'}`}
                     >
                         <Square size={16} fill={mode !== 'idle' ? 'currentColor' : 'none'} />
-                        Stop
+                        Deactivate MPC
                     </button>
                 </div>
             </div>
@@ -415,18 +450,20 @@ export function MPCDashboard() {
             )}
 
             {/* ── Tabs ── */}
-            <div className="flex border-b border-slate-800 mb-6">
+            <div className="flex border-b border-slate-800 mb-6 overflow-x-auto scrollbar-none">
                 {[
-                    { id: 'monitor', label: 'Real-time Monitor', icon: Activity },
+                    { id: 'monitor', label: 'Live Monitor', icon: Activity },
+                    { id: 'analysis', label: 'Analysis', icon: BarChart2 },
+                    { id: 'internals', label: 'Optimizer Internals', icon: Cpu },
                     { id: 'config', label: 'Controller Config', icon: Settings },
                 ].map(tab => (
                     <button
                         key={tab.id}
                         onClick={() => setActiveSubTab(tab.id)}
-                        className={`flex items-center gap-2 px-6 py-3 text-sm font-medium border-b-2 transition-colors
+                        className={`flex items-center gap-2 px-5 py-3 text-sm font-medium border-b-2 whitespace-nowrap transition-colors
                             ${activeSubTab === tab.id ? 'border-indigo-500 text-indigo-400' : 'border-transparent text-slate-400 hover:text-slate-200'}`}
                     >
-                        <tab.icon size={16} /> {tab.label}
+                        <tab.icon size={15} /> {tab.label}
                     </button>
                 ))}
             </div>
@@ -436,6 +473,10 @@ export function MPCDashboard() {
                 {activeSubTab === 'monitor' && (
                     <MpcMonitorTab mode={mode} status={status} dataHistory={mpcHistory} hasBaseline={!!baselineData} />
                 )}
+                {activeSubTab === 'analysis' && (
+                    <MpcAnalysisTab dataHistory={mpcHistory} baselineMeta={baselineMeta} />
+                )}
+                {activeSubTab === 'internals' && <MpcInternalsTab />}
                 {activeSubTab === 'config' && <MpcConfigTab />}
             </div>
 
