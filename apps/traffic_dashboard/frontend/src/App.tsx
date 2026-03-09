@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, NavLink } from 'react-router-dom';
 import {
   LayoutDashboard,
@@ -9,7 +9,8 @@ import {
   Search,
   Bell,
   ChevronRight,
-  Siren
+  Siren,
+  LogOut
 } from 'lucide-react';
 
 // Modules
@@ -18,36 +19,49 @@ import { MPCDashboard } from './modules/mpc/MPCDashboard';
 import SystemOverview from './modules/overview/SystemOverview';
 import EvpsDashboard from './modules/evps/EvpsDashboard';
 import { GnnProvider } from './modules/gnn/context/GnnContext';
+import LoginPage from './modules/auth/LoginPage';
 
 // --- 1. SIDEBAR COMPONENT (Ported from Code 1) ---
-const Sidebar = () => (
-  <aside className="w-64 border-r border-slate-800 bg-[#0B1120] flex flex-col h-screen sticky top-0">
-    {/* Logo Section */}
-    <div className="p-6 flex items-center gap-3">
-      <div className="w-8 h-8 bg-gradient-to-br from-indigo-600 to-violet-600 rounded-lg flex items-center justify-center shadow-lg shadow-indigo-500/20">
-        <Network size={20} className="text-white" />
+const Sidebar = ({ onLogout }: { onLogout: () => void }) => (
+  <aside className="w-64 border-r border-slate-800 bg-[#0B1120] flex flex-col h-screen sticky top-0 justify-between">
+    <div>
+      {/* Logo Section */}
+      <div className="p-6 flex items-center gap-3">
+        <div className="w-8 h-8 bg-gradient-to-br from-indigo-600 to-violet-600 rounded-lg flex items-center justify-center shadow-lg shadow-indigo-500/20">
+          <Network size={20} className="text-white" />
+        </div>
+        <span className="font-bold text-lg tracking-tight text-slate-100">
+          MultiAgent<span className="text-indigo-400">.ai</span>
+        </span>
       </div>
-      <span className="font-bold text-lg tracking-tight text-slate-100">
-        MultiAgent<span className="text-indigo-400">.ai</span>
-      </span>
+
+      {/* Navigation Links */}
+      <nav className="px-3 space-y-1 mt-6">
+        <p className="px-3 text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">
+          Platform
+        </p>
+
+        <SidebarItem to="/overview" icon={<LayoutDashboard size={18} />} label="System Overview" />
+        <SidebarItem to="/gnn" icon={<Cpu size={18} />} label="GNN Optimizer" />
+        <SidebarItem to="/mpc" icon={<Activity size={18} />} label="MPC Control" />
+        <SidebarItem to="/evps" icon={<Siren size={18} />} label="EVPS View" />
+
+        <p className="px-3 text-xs font-semibold text-slate-500 uppercase tracking-wider mt-8 mb-2">
+          Settings
+        </p>
+        <SidebarItem to="/config" icon={<Settings size={18} />} label="System Config" />
+      </nav>
     </div>
 
-    {/* Navigation Links */}
-    <nav className="flex-1 px-3 space-y-1 mt-6 overflow-y-auto">
-      <p className="px-3 text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">
-        Platform
-      </p>
-
-      <SidebarItem to="/overview" icon={<LayoutDashboard size={18} />} label="System Overview" />
-      <SidebarItem to="/gnn" icon={<Cpu size={18} />} label="GNN Optimizer" />
-      <SidebarItem to="/mpc" icon={<Activity size={18} />} label="MPC Control" />
-      <SidebarItem to="/evps" icon={<Siren size={18} />} label="EVPS View" />
-
-      <p className="px-3 text-xs font-semibold text-slate-500 uppercase tracking-wider mt-8 mb-2">
-        Settings
-      </p>
-      <SidebarItem to="/config" icon={<Settings size={18} />} label="System Config" />
-    </nav>
+    <div className="p-4 border-t border-slate-800 mt-auto">
+      <button
+        onClick={onLogout}
+        className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all text-slate-400 hover:text-red-400 hover:bg-red-400/10"
+      >
+        <LogOut size={18} />
+        Sign Out
+      </button>
+    </div>
   </aside>
 );
 
@@ -93,6 +107,22 @@ const TopHeader = () => (
 
 // --- 4. MAIN APP LAYOUT ---
 export default function App() {
+  const [isAuthenticated, setIsAuthenticated] = useState(() => {
+    return localStorage.getItem('isAuthenticated') === 'true';
+  });
+
+  const handleLogout = () => {
+    setIsAuthenticated(false);
+    localStorage.removeItem('isAuthenticated');
+  };
+
+  if (!isAuthenticated) {
+    return <LoginPage onLogin={() => {
+      setIsAuthenticated(true);
+      localStorage.setItem('isAuthenticated', 'true');
+    }} />;
+  }
+
   return (
     <GnnProvider>
       <BrowserRouter>
@@ -101,7 +131,7 @@ export default function App() {
          Main is flex-1 (takes remaining space).
       */}
         <div className="flex h-screen bg-[#0B1120] text-slate-100 font-sans overflow-hidden">
-          <Sidebar />
+          <Sidebar onLogout={handleLogout} />
 
           <main className="flex-1 flex flex-col min-w-0">
             <TopHeader />
