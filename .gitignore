@@ -13,6 +13,7 @@ __pycache__/
 
 # Virtual Environment
 venv/
+.env
 .env/
 ENV/
 env/
@@ -32,11 +33,34 @@ tmp/
 temp/
 .DS_Store
 
+# Saved simulation states
+saved_states/
+
 # Model files
-*.pt
-*.pth
-*.pkl
+# *.pkl
 *.ckpt
+# *.h5
+*.joblib
+*.onnx
+
+# ---------------------------
+# COMPONENT: AI-Driven EVPS (emergency_vehicle_preemption)
+# ---------------------------
+
+# Raw + processed datasets
+emergency_vehicle_preemption/data/raw/
+emergency_vehicle_preemption/data/processed/
+emergency_vehicle_preemption/**/*.csv
+emergency_vehicle_preemption/**/*.npy
+
+# Ignore SUMO tripinfo XML outputs (Phase 4 evaluation artifacts)
+services/emergency_vehicle_preemption/data/evaluation_results/*.xml
+
+# Ignore generated bulk SUMO scenarios
+services/emergency_vehicle_preemption/simulation/config/bulk_scenarios/
+services/emergency_vehicle_preemption/simulation/routes/bulk_scenarios/
+
+
 
 # ---------------------------
 # SUMO Specific
@@ -44,7 +68,7 @@ temp/
 *.dump
 *.xml.gz
 *.sumocfg.save
-*.rou.alt.xml
+# *.rou.alt.xml
 *.synchro.xml
 *.stop.xml
 *.traci.xml
@@ -55,11 +79,11 @@ temp/
 *.nodes.xml
 
 # SUMO Generated binary files
-*.net.xml
+# *.net.xml
 *.edge.xml
 *.edg.xml
 *.nod.xml
-*.rou.xml
+# *.rou.xml
 *.add.xml
 
 # Keep specific simulation files

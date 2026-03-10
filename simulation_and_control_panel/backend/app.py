@@ -1,0 +1,574 @@
+from flask import Flask, jsonify, request
+from flask_sock import Sock
+from flask_socketio import SocketIO
+from flask_cors import CORS
+from Controllers.simulation_controller import SimulationController
+from Controllers.scenario_controller import ScenarioController
+from Controllers.data_controller import DataController
+from Controllers.state_controller import StateController
+from optimizers.evps_adapter import EVPSAdapter
+from config import config
+from flask_socketio import SocketIO
+import os
+import json
+
+app = Flask(__name__)
+CORS(app)  # Allow frontend to connect
+sock = Sock(app) # Initialize raw WebSocket support
+
+socketio = SocketIO(app, cors_allowed_origins="*", async_mode='threading')
+
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+# CHANGE THIS to your actual config file!
+# CONFIG_FILE = os.path.join(BASE_DIR, "..", "scenarios", "mapishara.sumo.cfg")
+CONFIG_FILE = os.path.join(BASE_DIR, "..", "scenarios", "grid3x3", "grid3x3.sumo.cfg")
+# CONFIG_FILE = os.path.join(BASE_DIR, "..", "..", "services", "emergency_vehicle_preemption", "simulation", "config", "katunayake.sumocfg")
+
+# Initialize controllers
+evps_adapter = EVPSAdapter()
+
+sim_controller = SimulationController(
+    CONFIG_FILE, 
+    use_gui=config.USE_GUI,
+    step_delay=config.STEP_DELAY,
+    socketio_instance=socketio,
+    evps_adapter=evps_adapter
+)
+
+data_controller = DataController(sim_controller)
+scenario_controller = ScenarioController(sim_controller)
+state_controller = StateController(sim_controller, data_controller)
+
+# ============================================================================
+# GREEN WAVE WEBSOCKET
+# ============================================================================
+@sock.route('/ws')
+def green_wave_ws(ws):
+    evps_adapter.set_websocket(ws)
+    try:
+        while True:
+            data = ws.receive()
+            if data:
+                try:
+                    message = json.loads(data)
+                    if message.get("type") == "switch_ev":
+                        evps_adapter.switch_vehicle(message.get("ev_id"))
+                    elif message.get("type") == "set_priority":
+                        evps_adapter.set_ev_priority(message.get("ev_id"), message.get("priority"))
+                except:
+                    pass
+    except Exception as e:
+        print(f"WS Error: {e}")
+    finally:
+        evps_adapter.disconnect_websocket(ws)
+
+
+# ============================================================================
+# HEALTH CHECK
+# ============================================================================
+
+@app.route('/api/health', methods=['GET'])
+def health_check():
+    return jsonify({"status": "healthy", "message": "API is running"})
+
+
+# ============================================================================
+# SIMULATION LIFECYCLE ENDPOINTS
+# ============================================================================
+
+@app.route('/api/simulation/start', methods=['POST'])
+def start_simulation():
+    data = request.get_json(silent=True) or {}
+    suppress_demand = bool(data.get('suppress_demand', False))
+    result = sim_controller.start(suppress_demand=suppress_demand)
+    return jsonify(result)
+
+
+@app.route('/api/simulation/step', methods=['POST'])
+def step_simulation():
+    result = sim_controller.step()
+    # If step succeeded, get current data
+    if result.get("status") == "success":
+        data = data_controller.get_current_data()
+        result.update(data)
+    return jsonify(result)
+
+
+@app.route('/api/simulation/pause', methods=['POST'])
+def pause_simulation():
+    result = sim_controller.pause()
+    return jsonify(result)
+
+
+@app.route('/api/simulation/resume', methods=['POST'])
+def resume_simulation():
+    result = sim_controller.resume()
+    return jsonify(result)
+
+
+@app.route('/api/simulation/stop', methods=['POST'])
+def stop_simulation():
+    result = sim_controller.stop()
+    return jsonify(result)
+
+
+# ============================================================================
+# AUTO-STEPPING ENDPOINTS
+# ============================================================================
+
+@app.route('/api/simulation/auto-step/start', methods=['POST'])
+def start_auto_step():
+    data = request.get_json(silent=True) or {}
+    step_delay = data.get('step_delay', None)  # None will use config default
+    result = sim_controller.start_auto_stepping(step_delay)
+    return jsonify(result)
+
+
+@app.route('/api/simulation/auto-step/pause', methods=['POST'])
+def pause_auto_step():
+    result = sim_controller.pause_auto_stepping()
+    return jsonify(result)
+
+
+@app.route('/api/simulation/auto-step/resume', methods=['POST'])
+def resume_auto_step():
+    result = sim_controller.resume_auto_stepping()
+    return jsonify(result)
+
+
+@app.route('/api/simulation/auto-step/stop', methods=['POST'])
+def stop_auto_step():
+    result = sim_controller.stop_auto_stepping()
+    return jsonify(result)
+
+
+# ============================================================================
+# SCENARIO MANAGEMENT ENDPOINTS
+# ============================================================================
+
+@app.route('/api/scenarios', methods=['GET'])
+def get_scenarios():
+    """Get list of available scenarios"""
+    result = scenario_controller.get_available_scenarios()
+    return jsonify(result)
+
+
+@app.route('/api/simulation/switch-scenario', methods=['POST'])
+def switch_scenario():
+    """Switch to a different scenario"""
+    data = request.json
+    scenario_name = data.get('scenario_name')
+    
+    if not scenario_name:
+        return jsonify({"status": "error", "message": "scenario_name is required"}), 400
+    
+    result = scenario_controller.switch_scenario(scenario_name)
+    return jsonify(result)
+
+
+@app.route('/api/simulation/reload', methods=['POST'])
+def reload_scenario():
+    """Reload the current scenario from the beginning"""
+    result = scenario_controller.reload_scenario()
+    return jsonify(result)
+
+
+@app.route('/api/simulation/current-scenario', methods=['GET'])
+def get_current_scenario():
+    """Get information about the currently loaded scenario"""
+    result = scenario_controller.get_current_scenario_info()
+    return jsonify(result)
+
+
+# ============================================================================
+# DATA RETRIEVAL ENDPOINTS
+# ============================================================================
+
+@app.route('/api/simulation/data', methods=['GET'])
+def get_data():
+    """Get current simulation data (vehicles, traffic lights)"""
+    data = data_controller.get_current_data()
+    return jsonify(data)
+
+
+@app.route('/api/simulation/status', methods=['GET'])
+def get_status():
+    """Get simulation status"""
+    status = data_controller.get_status()
+    return jsonify(status)
+
+
+@app.route('/api/simulation/vehicles', methods=['GET'])
+def get_vehicles():
+    """Get vehicle count and IDs"""
+    result = data_controller.get_vehicle_count()
+    return jsonify(result)
+
+
+@app.route('/api/simulation/vehicles/<vehicle_id>', methods=['GET'])
+def get_vehicle(vehicle_id):
+    """Get detailed information about a specific vehicle"""
+    result = data_controller.get_vehicle_details(vehicle_id)
+    return jsonify(result)
+
+
+@app.route('/api/simulation/traffic-lights', methods=['GET'])
+def get_traffic_lights():
+    """Get all traffic light states"""
+    result = data_controller.get_traffic_light_states()
+    return jsonify(result)
+
+
+# ============================================================================
+# STATE MANAGEMENT ENDPOINTS
+# ============================================================================
+
+@app.route('/api/simulation/save-state', methods=['POST'])
+def save_state():
+    """Save current simulation state"""
+    data = request.json
+    state_name = data.get('state_name', 'default')
+    result = state_controller.save_state(state_name)
+    return jsonify(result)
+
+
+@app.route('/api/simulation/states', methods=['GET'])
+def get_saved_states():
+    """Get list of all saved states"""
+    result = state_controller.get_saved_states()
+    return jsonify(result)
+
+
+@app.route('/api/simulation/states/<state_id>', methods=['GET'])
+def get_state_details(state_id):
+    """Get details about a specific saved state"""
+    result = state_controller.get_state_details(state_id)
+    return jsonify(result)
+
+
+@app.route('/api/simulation/states/<state_id>', methods=['DELETE'])
+def delete_state(state_id):
+    """Delete a saved state"""
+    result = state_controller.delete_state(state_id)
+    return jsonify(result)
+
+
+@app.route('/api/simulation/restore-state/<state_id>', methods=['POST'])
+def restore_state(state_id):
+    """Restore to a saved state"""
+    result = state_controller.restore_state(state_id)
+    return jsonify(result)
+
+
+@app.route('/api/simulation/states', methods=['DELETE'])
+def clear_all_states():
+    """Delete all saved states"""
+    result = state_controller.clear_all_states()
+    return jsonify(result)
+
+@app.route('/api/optimizer/load', methods=['POST'])
+def load_optimizer():
+    type = request.json.get('type', 'gnn')
+    sim_controller.load_optimizer(type)
+    return jsonify({"status": "success", "message": f"{type} optimizer loaded"})
+
+@app.route('/api/optimizer/toggle', methods=['POST'])
+def toggle_optimizer():
+    # Enable/Disable logic in controller
+    pass
+
+@app.route('/api/optimizer/unload', methods=['POST'])
+def unload_optimizer():
+    result = sim_controller.unload_optimizer()
+    return jsonify(result)
+
+@app.route('/api/optimizer/mpc/internals', methods=['GET'])
+def get_mpc_internals():
+    """Return last MPC optimizer decisions + config for the dashboard Internals tab."""
+    optimizer = getattr(sim_controller, 'optimizer', None)
+    if optimizer is None or not hasattr(optimizer, 'get_internals'):
+        return jsonify({"status": "idle", "message": "MPC optimizer not loaded"})
+    try:
+        data = optimizer.get_internals()
+        data["status"] = "active"
+        return jsonify(data)
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)})
+
+@app.route('/api/evps/toggle', methods=['POST'])
+def toggle_evps():
+    data = request.get_json(silent=True) or {}
+    enable = data.get('enable', False)
+    evps_adapter.toggle_evps(bool(enable))
+    return jsonify({"status": "success", "evps_enabled": bool(enable)})
+
+@app.route('/api/evps/spawn_geo', methods=['POST'])
+def spawn_ev_from_geo():
+    data = request.get_json(silent=True) or {}
+    start_lat = data.get('start_lat')
+    start_lon = data.get('start_lon')
+    end_lat = data.get('end_lat')
+    end_lon = data.get('end_lon')
+    ev_id = data.get('ev_id')
+
+    if None in [start_lat, start_lon, end_lat, end_lon]:
+        return jsonify({"status": "error", "message": "Missing coordinates"}), 400
+
+    try:
+        start_lat = float(start_lat)
+        start_lon = float(start_lon)
+        end_lat = float(end_lat)
+        end_lon = float(end_lon)
+    except ValueError:
+        return jsonify({"status": "error", "message": "Invalid coordinates format"}), 400
+
+    result = evps_adapter.spawn_ev_from_geo(start_lon, start_lat, end_lon, end_lat, ev_id=ev_id)
+    if result.get("status") == "error":
+        return jsonify(result), 400
+    return jsonify(result)
+
+@app.route('/api/evps/spawn_random', methods=['POST'])
+def spawn_random_ev():
+    data = request.get_json(silent=True) or {}
+    ev_id = data.get('ev_id')
+    result = evps_adapter.spawn_random_ev(ev_id=ev_id)
+    return jsonify(result)
+
+@app.route('/api/simulation/topology', methods=['GET'])
+def get_topology():
+    """Get the network topology (intersections, lanes, edges)"""
+    result = sim_controller.get_network_topology()
+    return jsonify(result)
+
+@app.route('/api/network/geojson', methods=['GET'])
+def get_network_geojson():
+    """Get the raw road network as a valid GeoJSON FeatureCollection"""
+    result = sim_controller.get_network_geojson()
+    if "error" in result:
+        return jsonify({"status": "error", "message": result["error"]}), 500
+    return jsonify(result)
+
+
+
+# ============================================================================
+# DYNAMIC FLOW RATE ENDPOINTS
+# ============================================================================
+
+@app.route('/api/simulation/routes', methods=['GET'])
+def get_routes():
+    """Return all route IDs currently loaded in the running simulation."""
+    result = sim_controller.get_routes()
+    return jsonify(result)
+
+
+@app.route('/api/simulation/flow-rate', methods=['POST'])
+def set_flow_rate():
+    """Adjust vehicle insertion rate for a single route at runtime.
+
+    Expected JSON body::
+
+        {"route_id": "route_0", "vehicles_per_hour": 300}
+    """
+    data = request.get_json(silent=True) or {}
+    route_id = data.get('route_id')
+    vehicles_per_hour = data.get('vehicles_per_hour')
+
+    if not route_id:
+        return jsonify({"status": "error", "message": "route_id is required"}), 400
+    if vehicles_per_hour is None:
+        return jsonify({"status": "error", "message": "vehicles_per_hour is required"}), 400
+
+    try:
+        vehicles_per_hour = float(vehicles_per_hour)
+    except (TypeError, ValueError):
+        return jsonify({"status": "error", "message": "vehicles_per_hour must be a number"}), 400
+
+    result = sim_controller.set_flow_rate(route_id, vehicles_per_hour)
+    return jsonify(result)
+
+
+@app.route('/api/simulation/flow-rate/global', methods=['POST'])
+def set_global_flow_rate():
+    """Apply a single vehicle insertion rate to every route in the simulation.
+
+    Expected JSON body::
+
+        {"vehicles_per_hour": 300}
+    """
+    data = request.get_json(silent=True) or {}
+    vehicles_per_hour = data.get('vehicles_per_hour')
+
+    if vehicles_per_hour is None:
+        return jsonify({"status": "error", "message": "vehicles_per_hour is required"}), 400
+
+    try:
+        vehicles_per_hour = float(vehicles_per_hour)
+    except (TypeError, ValueError):
+        return jsonify({"status": "error", "message": "vehicles_per_hour must be a number"}), 400
+
+    result = sim_controller.set_global_flow_rate(vehicles_per_hour)
+    return jsonify(result)
+
+
+# ============================================================================
+# MPC BASELINE ENDPOINTS
+# ============================================================================
+
+BASELINE_FILE = os.path.join(BASE_DIR, "mpc_baseline_metrics.json")
+
+@app.route('/api/mpc/baseline', methods=['GET'])
+def get_mpc_baseline():
+    """Get the saved baseline metrics if they exist"""
+    if os.path.exists(BASELINE_FILE):
+        try:
+            with open(BASELINE_FILE, 'r') as f:
+                payload = json.load(f)
+            # Handle both old format (plain list) and new format ({meta, data})
+            if isinstance(payload, list):
+                return jsonify({"status": "success", "data": payload, "meta": None})
+            elif isinstance(payload, dict) and "data" in payload:
+                return jsonify({"status": "success", "data": payload["data"], "meta": payload.get("meta")})
+            else:
+                return jsonify({"status": "error", "message": "Unrecognised baseline format"})
+        except Exception as e:
+            return jsonify({"status": "error", "message": str(e)})
+    else:
+        return jsonify({"status": "not_found", "message": "No baseline file found"}), 404
+
+
+
+@app.route('/api/mpc/baseline', methods=['POST'])
+def save_mpc_baseline():
+    """Save the current run metrics as the baseline"""
+    data = request.json
+    try:
+        with open(BASELINE_FILE, 'w') as f:
+            json.dump(data, f, indent=2)
+        return jsonify({"status": "success", "message": "Baseline saved"})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)})
+
+# ============================================================================
+# BASELINE RECORDER — Headless background 500-step runner
+# ============================================================================
+
+import threading
+
+_baseline_recorder_state = {
+    "running": False,
+    "step": 0,
+    "target": 500,
+    "error": None,
+}
+
+@app.route('/api/mpc/baseline/record', methods=['POST'])
+def start_baseline_record():
+    """Start a headless baseline recording for exactly 500 steps.
+    
+    Optional JSON body:
+    {
+        "scenario": "grid3x3",      # Scenario folder name to use
+        "flow_rate": 300,            # Global vehicles/hour to apply to all routes
+        "steps": 500                 # Number of steps (default 500)
+    }
+    """
+    global _baseline_recorder_state
+    if _baseline_recorder_state["running"]:
+        return jsonify({"status": "error", "message": "Recording already in progress"}), 400
+
+    body = request.get_json(silent=True) or {}
+    requested_scenario = body.get("scenario")       # e.g. "grid3x3"
+    requested_flow_rate = body.get("flow_rate")     # e.g. 300  (vehicles per hour)
+    steps = int(body.get("steps", 500))
+
+    def _run():
+        global _baseline_recorder_state
+        _baseline_recorder_state = {"running": True, "step": 0, "target": steps, "error": None}
+        collected = []
+        try:
+            # 1. Unload any optimizer — pure default signals only
+            sim_controller.unload_optimizer()
+
+            # 2. Stop any running simulation before reconfiguring
+            if sim_controller.is_running:
+                sim_controller.stop()
+
+            # 3. Switch scenario if requested
+            if requested_scenario:
+                result = scenario_controller.switch_scenario(requested_scenario)
+                if result.get("status") != "success":
+                    raise RuntimeError(f"Cannot switch scenario: {result.get('message')}")
+
+            # 4. Start simulation fresh
+            sim_controller.start()
+
+            # 5. Apply global flow rate to all routes after start (TraCI is live now)
+            # EXCEPTION: Katunayake map has pre-defined complex traffic. Applying
+            # a basic flow_rate will corrupt its routes and crash SUMO.
+            if requested_flow_rate is not None and requested_scenario != "katunayake":
+                sim_controller.set_global_flow_rate(float(requested_flow_rate))
+
+            # 6. Run for the requested number of steps
+            for i in range(steps):
+                sim_controller.step()
+                _baseline_recorder_state["step"] = i + 1
+                data = data_controller.get_current_data()
+                collected.append({
+                    "step": data.get("step", i),
+                    "vehicles": data.get("vehicle_count", 0),
+                    "avgSpeed": data.get("stats", {}).get("avg_speed", 0),
+                    "waitingTime": data.get("stats", {}).get("total_waiting_time", 0),
+                    "maxQueue": data.get("stats", {}).get("max_queue_length", 0),
+                })
+
+            # 7. Save results with metadata so we know what config was used
+            payload = {
+                "meta": {
+                    "scenario": requested_scenario or os.path.basename(os.path.dirname(sim_controller.config_file)),
+                    "flow_rate": requested_flow_rate,
+                    "steps": steps,
+                },
+                "data": collected,
+            }
+            with open(BASELINE_FILE, 'w') as f:
+                json.dump(payload, f, indent=2)
+
+            # 8. Stop simulation — recording is done
+            sim_controller.stop()
+        except Exception as e:
+            _baseline_recorder_state["error"] = str(e)
+            print(f"Baseline recorder error: {e}")
+            import traceback; traceback.print_exc()
+        finally:
+            _baseline_recorder_state["running"] = False
+
+    thread = threading.Thread(target=_run, daemon=True)
+    thread.start()
+    return jsonify({"status": "started", "message": f"Baseline recording started for {steps} steps"})
+
+
+
+@app.route('/api/mpc/baseline/record/status', methods=['GET'])
+def baseline_record_status():
+    """Poll the progress of the ongoing baseline recording."""
+    return jsonify({
+        "running": _baseline_recorder_state["running"],
+        "step": _baseline_recorder_state["step"],
+        "target": _baseline_recorder_state["target"],
+        "error": _baseline_recorder_state["error"],
+    })
+
+
+
+
+
+if __name__ == '__main__':
+    print("=" * 60)
+    print("Starting Traffic Simulation API...")
+    print("=" * 60)
+    print(f"Config file: {CONFIG_FILE}")
+    print(f"GUI Mode: {config.USE_GUI}")
+    print(f"Step delay: {config.STEP_DELAY}s")
+    print(f"API will be available at: http://localhost:{config.PORT}")
+    print("=" * 60)
+    socketio.run(app, debug=config.DEBUG, port=config.PORT, host=config.HOST)

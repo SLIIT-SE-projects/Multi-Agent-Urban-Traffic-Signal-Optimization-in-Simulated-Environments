@@ -1,0 +1,208 @@
+import os
+import sys
+import torch
+import torch.nn as nn
+import torch.optim as optim
+from tqdm import tqdm
+
+project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+if project_root not in sys.path:
+    sys.path.append(project_root)
+
+from src.config import FileConfig, TrainConfig, GraphConfig, ModelConfig
+from src.training.dataset_loader import TrafficDataset
+from src.models.hgat_core import RecurrentHGAT
+from src.utils.evaluator import Evaluator 
+
+# CONFIGURATION 
+DATASET_PATH = FileConfig.DATASET_PATH
+MODEL_SAVE_PATH = FileConfig.PRETRAINED_MODEL_PATH
+PLOT_SAVE_DIR = FileConfig.PLOTS_DIR
+EPOCHS = TrainConfig.SSL_EPOCHS
+HIDDEN_DIM = TrainConfig.HIDDEN_DIM
+LEARNING_RATE = TrainConfig.SSL_LEARNING_RATE
+TRAIN_SPLIT = TrainConfig.TRAIN_SPLIT # 80% Training, 20% Testing
+
+# AUXILIARY HEAD
+class StatePredictor(nn.Module):
+    def __init__(self, hidden_dim, lane_feature_dim):
+        super().__init__()
+        self.decoder = nn.Linear(hidden_dim, lane_feature_dim)
+
+    def forward(self, hidden_state):
+        return self.decoder(hidden_state)
+
+def aggregate_lane_features_per_intersection(next_data, graph_builder):
+    """
+    Vectorized: averages lane features per intersection.
+    Returns shape: (num_intersections, LANE_INPUT_DIM=3)
+    """
+    num_tls = graph_builder.num_intersections
+    lane_feat_dim = next_data['lane'].x.shape[1]
+
+    if graph_builder.static_edges['part_of'].numel() == 0:
+        return torch.zeros((num_tls, lane_feat_dim))
+
+    edge_index = graph_builder.static_edges['part_of']  # (2, num_edges)
+    lane_indices  = edge_index[0]   # shape: (num_edges,)
+    inter_indices = edge_index[1]   # shape: (num_edges,)
+
+    # Gather lane features for all edges at once
+    lane_feats = next_data['lane'].x[lane_indices]  # (num_edges, 3)
+
+    # Scatter-add into intersection buckets
+    agg = torch.zeros((num_tls, lane_feat_dim))
+    agg.scatter_add_(0, inter_indices.unsqueeze(1).expand_as(lane_feats), lane_feats)
+
+    # Count how many lanes per intersection
+    counts = torch.zeros(num_tls)
+    counts.scatter_add_(0, inter_indices, torch.ones(inter_indices.shape[0]))
+    counts = counts.clamp(min=1.0)
+
+    return agg / counts.unsqueeze(1)  # (num_intersections, 3)
+
+
+def train_ssl():
+    # 1. Setup Directories
+    if not os.path.exists(FileConfig.MODELS_DIR):
+        os.makedirs(FileConfig.MODELS_DIR)
+    if not os.path.exists(PLOT_SAVE_DIR):
+        os.makedirs(PLOT_SAVE_DIR)
+
+    # 2. Load Data
+    print(" Loading Dataset...")
+    dataset = TrafficDataset(root="experiments", file_path=DATASET_PATH)
+
+    from src.graphBuilder.graph_builder import TrafficGraphBuilder
+    from src.config import SimConfig
+    graph_builder = TrafficGraphBuilder(SimConfig.NET_FILE)
+    
+    # SPLIT DATASET 
+    total_len = len(dataset)
+    train_size = int(total_len * TRAIN_SPLIT)
+    
+    # slice the dataset. 
+    # split by time (First 80% vs Last 20%)
+    train_dataset = dataset[:train_size]
+    test_dataset = dataset[train_size:]
+    
+    print(f" Data Split: {len(train_dataset)} Training steps | {len(test_dataset)} Testing steps")
+    
+    # Initialize Model & Evaluator
+    print(" Initializing Model...")
+    sample_graph = dataset[0]
+    metadata = sample_graph.metadata()
+    
+    gnn_model = RecurrentHGAT(HIDDEN_DIM, GraphConfig.NUM_ACTIONS, ModelConfig.NUM_HEADS, metadata)
+    predictor = StatePredictor(HIDDEN_DIM, GraphConfig.LANE_INPUT_DIM)
+    evaluator = Evaluator()
+    
+    optimizer = optim.Adam(list(gnn_model.parameters()) + list(predictor.parameters()), lr=LEARNING_RATE)
+    criterion = nn.MSELoss()
+
+    print(" Starting Self-Supervised Pre-training...")
+
+    best_val_loss = float('inf')
+
+    # TRAINING LOOP 
+    for epoch in range(EPOCHS):
+        # A. TRAINING PHASE
+        gnn_model.train()
+        predictor.train()
+        total_train_loss = 0
+        hidden_state = None 
+        
+        # Iterate through Training Data
+        for t in tqdm(range(len(train_dataset) - 1), desc=f"Epoch {epoch+1} [Train]"):
+            current_data = train_dataset[t]
+            next_data = train_dataset[t+1]
+            
+            optimizer.zero_grad()
+            
+            # [FIXED]: Added current_data.edge_attr_dict to the forward pass
+            _, _, hidden_state = gnn_model(
+                current_data.x_dict, 
+                current_data.edge_index_dict, 
+                hidden_state, 
+                current_data.edge_attr_dict
+            )
+            
+            predicted_next_state = predictor(hidden_state)
+            target = aggregate_lane_features_per_intersection(next_data, graph_builder)
+            
+            loss = criterion(predicted_next_state, target)
+            loss.backward()
+            optimizer.step()
+            
+            hidden_state = hidden_state.detach()
+            total_train_loss += loss.item()
+
+        avg_train_loss = total_train_loss / len(train_dataset)
+
+        # B. TESTING (VALIDATION) PHASE
+        gnn_model.eval()
+        predictor.eval()
+        total_test_loss = 0
+        hidden_state_test = None
+        
+        # Store all predictions for metrics calculation
+        all_preds = []
+        all_targets = []
+        
+        with torch.no_grad(): # Disable gradient calculation for testing
+            for t in range(len(test_dataset) - 1):
+                current_data = test_dataset[t]
+                next_data = test_dataset[t+1]
+                
+                # [FIXED]: Added current_data.edge_attr_dict to the evaluation pass
+                _, _, hidden_state_test = gnn_model(
+                    current_data.x_dict, 
+                    current_data.edge_index_dict, 
+                    hidden_state_test, 
+                    current_data.edge_attr_dict
+                )
+                
+                predicted = predictor(hidden_state_test)
+                target = aggregate_lane_features_per_intersection(next_data, graph_builder)
+                
+                loss = criterion(predicted, target)
+                total_test_loss += loss.item()
+                
+                # Collect for metrics
+                all_preds.append(predicted)
+                all_targets.append(target)
+        
+        avg_test_loss = total_test_loss / len(test_dataset)
+        
+        # METRICS & LOGGING 
+        cat_preds = torch.cat(all_preds)
+        cat_targets = torch.cat(all_targets)
+        
+        # Calculate R2, MAE, RMSE
+        metrics = evaluator.calculate_metrics(cat_preds, cat_targets)
+        evaluator.log_epoch(avg_train_loss, avg_test_loss)
+
+        print(f" Epoch {epoch+1} | Train Loss: {avg_train_loss:.4f} | Test Loss: {avg_test_loss:.4f}")
+        print(f"  Validation Metrics: MAE={metrics['MAE']:.4f}, RMSE={metrics['RMSE']:.4f}, R2={metrics['R2']:.4f}")
+
+        # save better model 
+        if avg_test_loss < best_val_loss:
+            best_val_loss = avg_test_loss
+            print(f"   New Best Model! Saving to {MODEL_SAVE_PATH}...")
+            torch.save(gnn_model.state_dict(), MODEL_SAVE_PATH)
+        else:
+            print(f"   (Loss did not improve from {best_val_loss:.4f})")
+
+    # Generate Plots
+    print(" Generating Evaluation Plots...")
+    evaluator.plot_learning_curves(save_path=f"{PLOT_SAVE_DIR}/loss_curve.png")
+    
+    # Generate Scatter plot using the LAST epoch's validation data
+    evaluator.plot_predictions_vs_truth(cat_preds, cat_targets, save_path=f"{PLOT_SAVE_DIR}/scatter.png")
+    evaluator.plot_time_series_sample(cat_preds, cat_targets, save_path=f"{PLOT_SAVE_DIR}/timeseries.png")
+    evaluator.plot_error_distribution(cat_preds, cat_targets, save_path=f"{PLOT_SAVE_DIR}/error_hist.png")
+    
+    print(f" Pre-training Complete! Plots saved to {PLOT_SAVE_DIR}")
+
+if __name__ == "__main__":
+    train_ssl() 

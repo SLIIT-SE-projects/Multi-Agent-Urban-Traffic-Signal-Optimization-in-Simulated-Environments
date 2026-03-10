@@ -1,0 +1,156 @@
+<routes>
+    <vType id="car" accel="2.6" decel="4.5" length="5" maxSpeed="15" guiShape="passenger"/>
+    <vType id="ambulance" vClass="emergency" accel="4.5" decel="6.0" length="6" maxSpeed="30" guiShape="emergency" speedFactor="1.5">
+        <param key="has.bluelight.device" value="true"/>
+    </vType>
+    <flow id="flow_13" type="car" begin="48" end="648" number="14" from="-313265384#1" to="-516778180#5" />
+    <trip id="EV_0" type="ambulance" depart="50" from="351846369#16" to="55422642#5" />
+    <flow id="flow_80" type="car" begin="52" end="652" number="14" from="310174329" to="308049011#1" />
+    <flow id="flow_7" type="car" begin="66" end="666" number="11" from="-351846369#3" to="-1116740487#0" />
+    <flow id="flow_17" type="car" begin="87" end="687" number="9" from="256014438#8" to="-53790857" />
+    <trip id="EV_1" type="ambulance" depart="120" from="-293813250#0" to="170732333#0" />
+    <trip id="EV_2" type="ambulance" depart="190" from="-256014444#0" to="308050448" />
+    <flow id="flow_1" type="car" begin="206" end="806" number="7" from="541864146" to="-371443931#0" />
+    <flow id="flow_49" type="car" begin="209" end="809" number="9" from="694753893#6" to="-553270736" />
+    <flow id="flow_86" type="car" begin="231" end="831" number="7" from="-608660499" to="-307990035#29" />
+    <trip id="EV_3" type="ambulance" depart="260" from="473378477#1" to="688704915#1" />
+    <flow id="flow_29" type="car" begin="273" end="873" number="8" from="542250137#7" to="549694047#0" />
+    <flow id="flow_15" type="car" begin="281" end="881" number="6" from="-517225913" to="-419815178" />
+    <trip id="EV_4" type="ambulance" depart="330" from="415798344" to="580530437#2" />
+    <flow id="flow_68" type="car" begin="338" end="938" number="12" from="-475478808#1" to="-308900844#5" />
+    <flow id="flow_11" type="car" begin="388" end="988" number="7" from="475576690" to="346331469#3" />
+    <trip id="EV_5" type="ambulance" depart="400" from="724198151#1" to="541861507" />
+    <flow id="flow_27" type="car" begin="415" end="1015" number="15" from="-419952416" to="-494261719" />
+    <flow id="flow_36" type="car" begin="424" end="1024" number="13" from="-342262314" to="-541651415#2" />
+    <flow id="flow_81" type="car" begin="439" end="1039" number="12" from="-423460457#58" to="-490464241#2" />
+    <flow id="flow_24" type="car" begin="466" end="1066" number="9" from="-423460457#9" to="-98963849#2" />
+    <trip id="EV_6" type="ambulance" depart="470" from="-199475639" to="-53791002#1" />
+    <flow id="flow_73" type="car" begin="493" end="1093" number="14" from="293656576" to="-584530358" />
+    <flow id="flow_55" type="car" begin="521" end="1121" number="8" from="-307989707#0" to="-608661783" />
+    <flow id="flow_37" type="car" begin="529" end="1129" number="5" from="54225323#0" to="129478574#2" />
+    <trip id="EV_7" type="ambulance" depart="540" from="-371385310#1" to="-542250137#8" />
+    <flow id="flow_3" type="car" begin="550" end="1150" number="11" from="129478574#9" to="-351037844#10" />
+    <flow id="flow_94" type="car" begin="582" end="1182" number="5" from="-347498217" to="-508148236#0" />
+    <trip id="EV_8" type="ambulance" depart="610" from="-50633737#1" to="308040406" />
+    <flow id="flow_66" type="car" begin="641" end="1241" number="12" from="518512202" to="948248123" />
+    <trip id="EV_9" type="ambulance" depart="680" from="-256014447#0" to="419952435#3" />
+    <flow id="flow_14" type="car" begin="704" end="1304" number="7" from="-311431388#3" to="835656580" />
+    <flow id="flow_0" type="car" begin="713" end="1313" number="6" from="399559995#0" to="306011889#1" />
+    <flow id="flow_32" type="car" begin="722" end="1322" number="6" from="1340327310" to="83376482#10" />
+    <trip id="EV_10" type="ambulance" depart="750" from="-519948359" to="-271072443#6" />
+    <trip id="EV_11" type="ambulance" depart="820" from="-371444446#0" to="-1245420761" />
+    <flow id="flow_90" type="car" begin="835" end="1435" number="5" from="384520908" to="311108693" />
+    <flow id="flow_18" type="car" begin="839" end="1439" number="11" from="54225363#3" to="-517225913" />
+    <flow id="flow_61" type="car" begin="876" end="1476" number="11" from="420091009" to="-603440054" />
+    <trip id="EV_12" type="ambulance" depart="890" from="-187887593" to="-473378477#1" />
+    <flow id="flow_54" type="car" begin="928" end="1528" number="14" from="-34698624#3" to="-202505074#4" />
+    <trip id="EV_13" type="ambulance" depart="960" from="-310990941#0" to="398996821#1" />
+    <flow id="flow_88" type="car" begin="976" end="1576" number="10" from="187887590#11" to="584528101" />
+    <flow id="flow_83" type="car" begin="1030" end="1630" number="10" from="1244829938" to="-419998822#0" />
+    <trip id="EV_14" type="ambulance" depart="1030" from="-377061459#1" to="-308049883" />
+    <flow id="flow_51" type="car" begin="1076" end="1676" number="7" from="456853051" to="-473381527#1" />
+    <trip id="EV_15" type="ambulance" depart="1100" from="423460457#57" to="54225354#6" />
+    <flow id="flow_91" type="car" begin="1133" end="1733" number="6" from="1033471720" to="-377061432#0" />
+    <flow id="flow_30" type="car" begin="1136" end="1736" number="10" from="342262308#0" to="964368865#1" />
+    <flow id="flow_22" type="car" begin="1148" end="1748" number="9" from="23811054#1" to="-475479822#3" />
+    <trip id="EV_16" type="ambulance" depart="1170" from="1117292692" to="-345487684#1" />
+    <flow id="flow_46" type="car" begin="1171" end="1771" number="9" from="518230021" to="542015214#2" />
+    <flow id="flow_87" type="car" begin="1181" end="1781" number="8" from="-517225917#0" to="-346326711#16" />
+    <flow id="flow_92" type="car" begin="1220" end="1820" number="5" from="427233012" to="563025618#3" />
+    <flow id="flow_8" type="car" begin="1234" end="1834" number="12" from="-508771054#0" to="53273640#0" />
+    <trip id="EV_17" type="ambulance" depart="1240" from="-517225902" to="54225362#1" />
+    <flow id="flow_71" type="car" begin="1241" end="1841" number="12" from="386281825#9" to="420079632#0" />
+    <flow id="flow_69" type="car" begin="1242" end="1842" number="13" from="323358906" to="1117294917#5" />
+    <flow id="flow_53" type="car" begin="1276" end="1876" number="10" from="-508770366#3" to="516794522" />
+    <trip id="EV_18" type="ambulance" depart="1310" from="-548560278" to="-423105731" />
+    <flow id="flow_4" type="car" begin="1317" end="1917" number="14" from="-252237782#0" to="1375625835" />
+    <flow id="flow_40" type="car" begin="1354" end="1954" number="11" from="370327310" to="-308900844#4" />
+    <flow id="flow_74" type="car" begin="1354" end="1954" number="6" from="-516786659#0" to="53791004" />
+    <trip id="EV_19" type="ambulance" depart="1380" from="351037844#3" to="-415535764" />
+    <flow id="flow_43" type="car" begin="1421" end="2021" number="15" from="311431272" to="584530361" />
+    <trip id="EV_20" type="ambulance" depart="1450" from="271066907#4" to="50633747#0" />
+    <flow id="flow_58" type="car" begin="1464" end="2064" number="10" from="-563025617#14" to="370326667#4" />
+    <trip id="EV_21" type="ambulance" depart="1520" from="-170732331" to="306439072" />
+    <flow id="flow_98" type="car" begin="1558" end="2158" number="7" from="-608658441#2" to="-180781641" />
+    <trip id="EV_22" type="ambulance" depart="1590" from="1033471735#1" to="-771101903" />
+    <flow id="flow_33" type="car" begin="1623" end="2223" number="15" from="-201363727#3" to="308048708" />
+    <flow id="flow_52" type="car" begin="1641" end="2241" number="14" from="701005183" to="293645928#4" />
+    <flow id="flow_5" type="car" begin="1646" end="2246" number="12" from="-1306519045" to="547501537#1" />
+    <trip id="EV_23" type="ambulance" depart="1660" from="313265380#3" to="52361393#9" />
+    <flow id="flow_56" type="car" begin="1676" end="2276" number="7" from="-1108916364" to="746792481" />
+    <flow id="flow_82" type="car" begin="1692" end="2292" number="9" from="53790008#0" to="-313867989" />
+    <trip id="EV_24" type="ambulance" depart="1730" from="398996819#7" to="-48959235#5" />
+    <flow id="flow_89" type="car" begin="1743" end="2343" number="14" from="53194491#1" to="524403382" />
+    <flow id="flow_12" type="car" begin="1758" end="2358" number="13" from="419806407#0" to="-475479822#3" />
+    <trip id="EV_25" type="ambulance" depart="1800" from="-524403380" to="345479342#7" />
+    <trip id="EV_26" type="ambulance" depart="1870" from="-340687194#5" to="546983368" />
+    <trip id="EV_27" type="ambulance" depart="1940" from="385959105" to="53195176" />
+    <flow id="flow_99" type="car" begin="1942" end="2542" number="12" from="-346331469#3" to="-271080938" />
+    <flow id="flow_10" type="car" begin="1979" end="2579" number="9" from="187887588#0" to="-517354806" />
+    <flow id="flow_41" type="car" begin="1998" end="2598" number="13" from="-345479327#9" to="-446571143#1" />
+    <trip id="EV_28" type="ambulance" depart="2010" from="308900844#3" to="-423460457#16" />
+    <flow id="flow_64" type="car" begin="2023" end="2623" number="14" from="-547501525" to="419952418" />
+    <flow id="flow_42" type="car" begin="2069" end="2669" number="7" from="-98965441#8" to="-54225121#2" />
+    <flow id="flow_79" type="car" begin="2073" end="2673" number="14" from="423460457#39" to="-473378959" />
+    <trip id="EV_29" type="ambulance" depart="2080" from="1245422142" to="50633768#0" />
+    <flow id="flow_44" type="car" begin="2096" end="2696" number="13" from="563025617#13" to="-612767498#1" />
+    <flow id="flow_39" type="car" begin="2116" end="2716" number="12" from="-480375262" to="1120291778" />
+    <flow id="flow_26" type="car" begin="2118" end="2718" number="12" from="541853495" to="187887590#3" />
+    <trip id="EV_30" type="ambulance" depart="2150" from="484848739" to="-405455084" />
+    <flow id="flow_28" type="car" begin="2202" end="2802" number="9" from="-293646026" to="241208374#2" />
+    <flow id="flow_19" type="car" begin="2208" end="2808" number="12" from="-724198151#1" to="473378482#1" />
+    <trip id="EV_31" type="ambulance" depart="2220" from="-490464034#3" to="53791217" />
+    <flow id="flow_60" type="car" begin="2241" end="2841" number="11" from="310990945" to="-395051016#5" />
+    <flow id="flow_95" type="car" begin="2258" end="2858" number="15" from="-53194201#1" to="-420072990" />
+    <flow id="flow_45" type="car" begin="2268" end="2868" number="10" from="-496284251#0" to="405683341#0" />
+    <flow id="flow_59" type="car" begin="2268" end="2868" number="6" from="308050420#1" to="-23797114#2" />
+    <flow id="flow_2" type="car" begin="2286" end="2886" number="12" from="-372776725#5" to="473388024#14" />
+    <flow id="flow_50" type="car" begin="2287" end="2887" number="14" from="308338318" to="311108695#0" />
+    <trip id="EV_32" type="ambulance" depart="2290" from="522101713" to="423460899#2" />
+    <flow id="flow_72" type="car" begin="2300" end="2900" number="8" from="-527325492" to="-399001068" />
+    <flow id="flow_93" type="car" begin="2346" end="2946" number="9" from="-417680420" to="-311110654" />
+    <trip id="EV_33" type="ambulance" depart="2360" from="-771101903" to="399559865#1" />
+    <flow id="flow_47" type="car" begin="2378" end="2978" number="5" from="-688704914#1" to="308048711#0" />
+    <flow id="flow_75" type="car" begin="2418" end="3018" number="6" from="-346326711#20" to="-794226576#0" />
+    <trip id="EV_34" type="ambulance" depart="2430" from="-308040407#1" to="-293645931" />
+    <flow id="flow_48" type="car" begin="2442" end="3042" number="13" from="-391086660#3" to="55422642#4" />
+    <flow id="flow_70" type="car" begin="2473" end="3073" number="9" from="-308046841#3" to="-311425334#6" />
+    <flow id="flow_23" type="car" begin="2485" end="3085" number="9" from="50633747#2" to="519733620" />
+    <trip id="EV_35" type="ambulance" depart="2500" from="330095122#1" to="180781643" />
+    <flow id="flow_97" type="car" begin="2523" end="3123" number="12" from="-482789826" to="256014453#3" />
+    <flow id="flow_16" type="car" begin="2562" end="3162" number="7" from="536507366" to="-52361393#3" />
+    <trip id="EV_36" type="ambulance" depart="2570" from="54225358#4" to="-473381927" />
+    <flow id="flow_84" type="car" begin="2640" end="3240" number="11" from="1123075107" to="-480375262" />
+    <trip id="EV_37" type="ambulance" depart="2640" from="546983358" to="395051016#17" />
+    <flow id="flow_67" type="car" begin="2643" end="3243" number="8" from="816466883#7" to="-83672632#1" />
+    <flow id="flow_62" type="car" begin="2686" end="3286" number="15" from="340687190#0" to="-541863269" />
+    <flow id="flow_57" type="car" begin="2693" end="3293" number="12" from="-258483484#2" to="398996821#0" />
+    <flow id="flow_6" type="car" begin="2701" end="3301" number="12" from="420136719" to="378854983#1" />
+    <flow id="flow_9" type="car" begin="2703" end="3303" number="8" from="-490464241#0" to="391086652#5" />
+    <trip id="EV_38" type="ambulance" depart="2710" from="-589328836#0" to="-524405806" />
+    <flow id="flow_21" type="car" begin="2722" end="3322" number="5" from="-1100781246#1" to="266274381#3" />
+    <trip id="EV_39" type="ambulance" depart="2780" from="342441197#1" to="-395051016#16" />
+    <flow id="flow_35" type="car" begin="2836" end="3436" number="12" from="-293268916#0" to="620768391" />
+    <trip id="EV_40" type="ambulance" depart="2850" from="-889087902#0" to="-308039085#4" />
+    <flow id="flow_85" type="car" begin="2860" end="3460" number="6" from="308039634" to="-370326855#2" />
+    <flow id="flow_25" type="car" begin="2863" end="3463" number="10" from="-256809837#1" to="53790668" />
+    <flow id="flow_76" type="car" begin="2882" end="3482" number="8" from="53273637#1" to="-53194192" />
+    <trip id="EV_41" type="ambulance" depart="2920" from="541864147" to="-746792482" />
+    <trip id="EV_42" type="ambulance" depart="2990" from="-371444447#1" to="-1340327308" />
+    <trip id="EV_43" type="ambulance" depart="3060" from="-54225115#2" to="-398996819#12" />
+    <flow id="flow_77" type="car" begin="3084" end="3684" number="6" from="311430756#0" to="-417137983#0" />
+    <trip id="EV_44" type="ambulance" depart="3130" from="271072443#1" to="-391267892#0" />
+    <flow id="flow_34" type="car" begin="3139" end="3739" number="14" from="54225115#2" to="-370328054#0" />
+    <flow id="flow_78" type="car" begin="3159" end="3759" number="6" from="131497266#6" to="-446571142#0" />
+    <flow id="flow_96" type="car" begin="3172" end="3772" number="8" from="345479342#8" to="-419867901" />
+    <flow id="flow_31" type="car" begin="3184" end="3784" number="9" from="-398996821#0" to="446571143#1" />
+    <trip id="EV_45" type="ambulance" depart="3200" from="48730297#2" to="83376482#8" />
+    <flow id="flow_65" type="car" begin="3215" end="3815" number="15" from="-970501063#4" to="-330094911#4" />
+    <trip id="EV_46" type="ambulance" depart="3270" from="-271066898#1" to="-311536413#3" />
+    <flow id="flow_38" type="car" begin="3278" end="3878" number="10" from="-1322802454" to="-53790008#2" />
+    <flow id="flow_20" type="car" begin="3312" end="3912" number="13" from="-311108687#3" to="-1039565080#4" />
+    <flow id="flow_63" type="car" begin="3322" end="3922" number="7" from="508148229" to="311536413#4" />
+    <trip id="EV_47" type="ambulance" depart="3340" from="391086656#7" to="-891821041#1" />
+    <trip id="EV_48" type="ambulance" depart="3410" from="-405683913#0" to="308039321" />
+    <trip id="EV_49" type="ambulance" depart="3480" from="311429172#2" to="-518230022" />
+</routes>

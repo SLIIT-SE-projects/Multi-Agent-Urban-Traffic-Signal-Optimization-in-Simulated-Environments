@@ -1,0 +1,3 @@
+- control_enabled=False
+- logging.log_dir=data/logs/baseline
+- sumo.use_gui=True

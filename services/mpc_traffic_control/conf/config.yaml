@@ -1,0 +1,20 @@
+defaults:
+  - _self_
+  - mpc: conservative
+  - platform@sumo: local_sumo
+  - network: grid_3x3
+
+# NEW FLAG: Set to true for MPC, false for Baseline
+control_enabled: true 
+
+optimization:
+  solver_name: "ipopt"
+  time_limit: 0.1
+  weight_queue: 10000.0
+  weight_delay: 0.0
+  weight_switch: 0.01
+
+logging:
+  level: "INFO"
+  log_dir: "data/logs"
+  save_frequency: 50

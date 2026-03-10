@@ -1,0 +1,11 @@
+traci
+sumolib
+pandas
+numpy
+scikit-learn
+tensorflow
+flask-sock
+fastapi 
+uvicorn 
+websockets
+seaborn

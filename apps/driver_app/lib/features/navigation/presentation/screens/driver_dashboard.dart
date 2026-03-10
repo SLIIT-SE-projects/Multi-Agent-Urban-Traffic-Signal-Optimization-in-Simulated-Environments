@@ -1,0 +1,192 @@
+import 'package:flutter/material.dart';
+import 'package:flutter_map/flutter_map.dart';
+import '../../data/models/vehicle_status.dart';
+import '../../data/services/websocket_service.dart';
+import '../widgets/dashboard_stats_panel.dart';
+import '../widgets/green_wave_banner.dart';
+import '../widgets/live_map.dart';
+import '../../../../core/constants/app_constants.dart';
+
+import '../../../../core/widgets/app_drawer.dart';
+import '../../../../core/widgets/custom_floating_app_bar.dart';
+
+class DriverDashboard extends StatefulWidget {
+  final String evId;
+  final bool isLocked;
+
+  const DriverDashboard({
+    super.key,
+    this.evId = AppConstants.defaultEvId,
+    this.isLocked = false,
+  });
+
+  @override
+  State<DriverDashboard> createState() => _DriverDashboardState();
+}
+
+class _DriverDashboardState extends State<DriverDashboard> {
+  late WebSocketService _webSocketService;
+  final MapController _mapController = MapController();
+
+  // App State
+  late String currentEvId;
+  VehicleStatus _status = VehicleStatus.empty();
+  bool hasData = false;
+
+  @override
+  void initState() {
+    super.initState();
+    currentEvId = widget.evId;
+    _webSocketService = WebSocketService();
+    // switchVehicle ensures backend tracks this newly provided test EV ID, if needed.
+    if (widget.evId != AppConstants.defaultEvId) {
+      _webSocketService.switchVehicle(widget.evId);
+    }
+  }
+
+  @override
+  void dispose() {
+    _webSocketService.dispose();
+    super.dispose();
+  }
+
+  void _switchVehicle(String newId) {
+    setState(() {
+      currentEvId = newId;
+      _webSocketService.switchVehicle(newId);
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      extendBodyBehindAppBar: true,
+      drawer: const AppDrawer(currentRoute: 'dashboard'),
+      body: StreamBuilder<bool>(
+        stream: _webSocketService.connectionState,
+        initialData: false,
+        builder: (context, connectionSnapshot) {
+          final isConnected = connectionSnapshot.data ?? false;
+
+          return StreamBuilder<VehicleStatus>(
+            stream: _webSocketService.vehicleStatusStream,
+            builder: (context, snapshot) {
+              if (snapshot.hasData) {
+                _status = snapshot.data!;
+                if (_status.position.latitude != 0 &&
+                    _status.position.longitude != 0) {
+                  hasData = true;
+                  try {
+                    _mapController.move(_status.position, 16.0);
+                  } catch (e) {
+                    // Controller might not be ready
+                  }
+                }
+              }
+
+              return Stack(
+            children: [
+              // 1. FULL SCREEN MAP
+              Positioned.fill(
+                child: LiveMap(
+                  mapController: _mapController,
+                  evPosition: _status.position,
+                  activeJunctions: _status.activeJunctions,
+                  hasData: hasData,
+                ),
+              ),
+
+              // 2. CUSTOM TOP BAR (Menu + Title + Vehicle Selector)
+              Positioned(
+                top: 0,
+                left: 0,
+                right: 0,
+                child: CustomFloatingAppBar(
+                  title: "ACTIVE MISSION",
+                  subtitle: Text(
+                    currentEvId,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 20,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  actions: [
+                    if (!widget.isLocked)
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(20),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withOpacity(0.2),
+                              blurRadius: 8,
+                              offset: const Offset(0, 2),
+                            ),
+                          ],
+                        ),
+                        child: DropdownButtonHideUnderline(
+                          child: DropdownButton<String>(
+                            value: currentEvId,
+                            icon: const Icon(Icons.keyboard_arrow_down, color: Color(0xFF2ECC71)),
+                            style: const TextStyle(
+                              color: Colors.black87,
+                              fontWeight: FontWeight.bold,
+                            ),
+                            items: [
+                              ..._status.activeFleet,
+                              if (!_status.activeFleet.contains(currentEvId)) currentEvId,
+                            ].map((id) => DropdownMenuItem(
+                                  value: id,
+                                  child: Text(!_status.activeFleet.contains(id) ? "$id (Offline)" : id),
+                                ))
+                                .toList(),
+                            onChanged: (val) {
+                              if (val != null) _switchVehicle(val);
+                            },
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+
+              // 3. BOTTOM STATS PANEL
+              Positioned(
+                bottom: 30,
+                left: 16,
+                right: 16,
+                child: Opacity(
+                  opacity: isConnected ? 1.0 : 0.5,
+                  child: DashboardStatsPanel(
+                    speed: _status.speed,
+                    eta: _status.eta,
+                    distToTls: _status.distToTls,
+                    isGreenWaveActive: _status.isGreenWaveActive,
+                  ),
+                ),
+              ),
+
+              // 4. GREEN WAVE BANNER (Floating below top bar)
+              if (_status.isGreenWaveActive || !isConnected)
+                Positioned(
+                  top: 120,
+                  left: 16,
+                  right: 16,
+                  child: Center(
+                    child: GreenWaveBanner(
+                      activeJunctionsCount: _status.activeJunctions.length,
+                      isConnected: isConnected,
+                    ),
+                  ),
+                ),
+            ],
+          );
+        },
+      );
+    },
+      ),
+    );
+  }
+}

@@ -1,0 +1,247 @@
+import torch
+from torch_geometric.data import HeteroData
+import sumolib
+import numpy as np
+from src.config import GraphConfig
+from collections import defaultdict
+
+class TrafficGraphBuilder:
+    def __init__(self, net_file_path):
+        
+        print(f"Loading Network: {net_file_path}")
+        # withNodeNeighbors=True ensures we can traverse the graph topology
+        self.net = sumolib.net.readNet(net_file_path, withNodeNeighbors=True)
+        
+        # --- 1. Identify Nodes (Intersections & Lanes) ---
+        
+        # FIX: Iterate over Traffic Lights, not just Nodes
+        self.tls_objects = self.net.getTrafficLights()
+        
+        # FIX: Get all lanes by iterating through all edges first
+        self.all_lanes = []
+        for edge in self.net.getEdges():
+            self.all_lanes.extend(edge.getLanes())
+
+        # Create Mappings: String ID -> Integer Index
+        self.tls_map = {tls.getID(): i for i, tls in enumerate(self.tls_objects)}
+        self.lane_map = {lane.getID(): i for i, lane in enumerate(self.all_lanes)}
+        
+        # Map physical Nodes to their controlling TLS
+        self.node_to_tls_id = {}
+        self.tls_to_nodes = defaultdict(set) 
+        
+        for tls in self.tls_objects:
+            self.tls_to_nodes[tls.getID()] = set()
+            conns = tls.getConnections()
+            for conn_list in conns:
+                if len(conn_list) > 0:
+                    lane = conn_list[0] 
+                    node = lane.getEdge().getToNode()
+                    self.node_to_tls_id[node.getID()] = tls.getID()
+                    self.tls_to_nodes[tls.getID()].add(node)
+        
+        self.num_intersections = len(self.tls_objects)
+        self.num_lanes = len(self.all_lanes)
+        
+        print(f"Graph Initialized: {self.num_intersections} Traffic Light Systems, {self.num_lanes} Lanes.")
+        print(f"Graph Builder: Mapped {len(self.tls_map)} Traffic Light Systems")
+
+        # --- 2. Build Static Edges ---
+        self.static_edges = self._build_static_topology()
+
+        # FIX: Store actual phase count per TLS for correct normalization.
+        # Katunayake joinedG TLS have 6 or 8 phases; model trained on 4.
+        # raw_p_idx % 4 corrupts observations for phases >= 4.
+        self.tls_phase_counts = {}
+        for tls in self.tls_objects:
+            programs = tls.getPrograms()
+            if programs:
+                phases = list(programs.values())[0].getPhases()
+                self.tls_phase_counts[tls.getID()] = len(phases)
+            else:
+                self.tls_phase_counts[tls.getID()] = GraphConfig.NUM_SIGNAL_PHASES
+
+        # [CRITICAL FIX 2]: Initialize Temporal Memory Trackers
+        self.last_phases = {}
+        self.phase_durations = {}
+
+    def _build_static_topology(self):
+        
+        src_part_of, dst_part_of = [], []
+        edge_attr_part_of = [] 
+        
+        src_adj, dst_adj = [], []
+        src_feed, dst_feed = [], []
+
+        # A. Lane -> Intersection Connectivity ('part_of')
+        for lane in self.all_lanes:
+            lane_id = lane.getID()
+            edge = lane.getEdge()
+            target_node = edge.getToNode()
+            
+            if target_node.getID() in self.node_to_tls_id:
+                tls_id = self.node_to_tls_id[target_node.getID()]
+                if tls_id in self.tls_map:
+                    l_idx = self.lane_map[lane_id]
+                    i_idx = self.tls_map[tls_id]
+                    
+                    src_part_of.append(l_idx)
+                    dst_part_of.append(i_idx)
+                    
+                    norm_length = min(lane.getLength() / 1000.0, 1.0)
+                    norm_speed_limit = min(lane.getSpeed() / 33.33, 1.0)
+                    edge_attr_part_of.append([norm_length, norm_speed_limit])
+
+        # B. Intersection -> Intersection Topology ('adjacent_to')
+        for tls in self.tls_objects:
+            u_idx = self.tls_map[tls.getID()]
+            
+            visited_neighbors = set()
+            
+            if tls.getID() in self.tls_to_nodes:
+                for node in self.tls_to_nodes[tls.getID()]:
+                    for outgoing_edge in node.getOutgoing():
+                        neighbor_node = outgoing_edge.getToNode()
+                        
+                        if neighbor_node.getID() in self.node_to_tls_id:
+                            neighbor_tls_id = self.node_to_tls_id[neighbor_node.getID()]
+                            
+                            if neighbor_tls_id != tls.getID() and neighbor_tls_id in self.tls_map:
+                                if neighbor_tls_id not in visited_neighbors:
+                                    v_idx = self.tls_map[neighbor_tls_id]
+                                    src_adj.append(u_idx)
+                                    dst_adj.append(v_idx)
+                                    visited_neighbors.add(neighbor_tls_id)
+        
+        # C. Lane -> Lane Flow ('feeds_into')
+        for lane in self.all_lanes:
+            if lane.getID() not in self.lane_map: continue
+            l_from_idx = self.lane_map[lane.getID()]
+            
+            for conn in lane.getOutgoing():
+                to_lane = conn.getToLane()
+                if to_lane.getID() in self.lane_map:
+                    l_to_idx = self.lane_map[to_lane.getID()]
+                    src_feed.append(l_from_idx)
+                    dst_feed.append(l_to_idx)
+
+        return {
+            'part_of': torch.tensor([src_part_of, dst_part_of], dtype=torch.long),
+            'part_of_attr': torch.tensor(edge_attr_part_of, dtype=torch.float), 
+            'adjacent': torch.tensor([src_adj, dst_adj], dtype=torch.long),
+            'feeds': torch.tensor([src_feed, dst_feed], dtype=torch.long)
+        }
+
+    def _get_lane_features(self, lane_id, snapshot):
+        lane_data = snapshot['lanes'][lane_id]
+        
+        MAX_CAPACITY = 50.0 
+        MAX_SPEED = 13.89
+        
+        norm_queue = min(lane_data['queue_length'] / MAX_CAPACITY, 1.0)
+        norm_wait = min(lane_data['total_wait_time'] / 120.0, 1.0)
+        norm_avg_speed = min(lane_data['avg_speed'] / MAX_SPEED, 1.0)
+        
+        return [norm_queue, norm_wait, norm_avg_speed]
+
+    def create_hetero_data(self, snapshot):
+        
+        data = HeteroData()
+        
+        # 1. Node Features (Dynamic)
+        
+        # A. Intersection Features & Positions
+        x_inter = torch.zeros((self.num_intersections, GraphConfig.INTERSECTION_INPUT_DIM), dtype=torch.float)
+        pos_inter = [[0.0, 0.0] for _ in range(self.num_intersections)]
+        
+        for tls_id, info in snapshot['intersections'].items():
+            if tls_id in self.tls_map:
+                idx = self.tls_map[tls_id]
+                
+                # Features
+                raw_p_idx = int(info['phase_index'])
+                num_phases = self.tls_phase_counts.get(tls_id, GraphConfig.NUM_SIGNAL_PHASES)
+                N = GraphConfig.NUM_SIGNAL_PHASES  # = 4
+                if num_phases <= N:
+                    p_idx = raw_p_idx % N
+                else:
+                    # Map 6/8-phase TLS into 4 buckets preserving green/yellow semantics.
+                    # Even raw index = green, odd = yellow. Pair index cycles 0,1.
+                    pair_index = (raw_p_idx // 2) % (N // 2)
+                    is_yellow  = (raw_p_idx % 2 == 1)
+                    p_idx = pair_index * 2 + (1 if is_yellow else 0)
+                x_inter[idx, p_idx] = 1.0 
+                raw_time_to_switch = float(info.get('time_to_switch', 0.0))
+                x_inter[idx, GraphConfig.NUM_SIGNAL_PHASES] = min(raw_time_to_switch / 60.0, 1.0)
+                
+                # ---------------------------------------------------------
+                # [CRITICAL FIX 2]: Temporal Memory (Phase Duration)
+                # ---------------------------------------------------------
+                if tls_id not in self.last_phases:
+                    self.last_phases[tls_id] = raw_p_idx
+                    self.phase_durations[tls_id] = 0.0
+                elif self.last_phases[tls_id] == raw_p_idx:
+                    # We are stepping exactly every 20 seconds
+                    self.phase_durations[tls_id] += 20.0
+                else:
+                    # Phase changed, reset the clock
+                    self.last_phases[tls_id] = raw_p_idx
+                    self.phase_durations[tls_id] = 0.0
+                
+                # Normalize the duration (Cap at 120 seconds to prevent runaways)
+                norm_duration = min(self.phase_durations[tls_id] / 120.0, 1.0)
+                
+                # Inject the "Watch" feature at the end of the tensor
+                x_inter[idx, GraphConfig.NUM_SIGNAL_PHASES + 1] = norm_duration
+                # ---------------------------------------------------------
+                
+                # Position: Average of all controlled nodes
+                try:
+                    if tls_id in self.tls_to_nodes and self.tls_to_nodes[tls_id]:
+                        nodes = list(self.tls_to_nodes[tls_id])
+                        xs = [n.getCoord()[0] for n in nodes]
+                        ys = [n.getCoord()[1] for n in nodes]
+                        pos_inter[idx] = [sum(xs)/len(xs), sum(ys)/len(ys)]
+                except:
+                    pass
+
+        data['intersection'].x = x_inter
+        data['intersection'].pos = torch.tensor(pos_inter, dtype=torch.float)
+
+        # B. Lane Features & Positions
+        x_lane = torch.zeros((self.num_lanes, GraphConfig.LANE_INPUT_DIM), dtype=torch.float)
+        pos_lane = [[0.0, 0.0] for _ in range(self.num_lanes)]
+
+        for lane_id, info in snapshot['lanes'].items():
+            if lane_id in self.lane_map:
+                idx = self.lane_map[lane_id]
+                # Features
+                x_lane[idx, 0] = min(float(info['queue_length']) / 50.0, 1.0)
+                x_lane[idx, 1] = min(float(info['avg_speed']) / 13.89, 1.0)
+                x_lane[idx, 2] = min(float(info['waiting_time']) / 120.0, 1.0)
+                
+                # Position (Calculate Center of Lane)
+                try:
+                    lane_shape = self.net.getLane(lane_id).getShape()
+                    if lane_shape:
+                        avg_x = sum(p[0] for p in lane_shape) / len(lane_shape)
+                        avg_y = sum(p[1] for p in lane_shape) / len(lane_shape)
+                        pos_lane[idx] = [avg_x, avg_y]
+                except:
+                    pass 
+
+        data['lane'].x = x_lane
+        data['lane'].pos = torch.tensor(pos_lane, dtype=torch.float)
+
+        # --- 2. Edges (Static) ---
+        if self.static_edges['part_of'].numel() > 0:
+            data['lane', 'part_of', 'intersection'].edge_index = self.static_edges['part_of']
+            data['lane', 'part_of', 'intersection'].edge_attr = self.static_edges['part_of_attr']
+        
+        if self.static_edges['adjacent'].numel() > 0:
+            data['intersection', 'adjacent_to', 'intersection'].edge_index = self.static_edges['adjacent']
+            
+        if self.static_edges['feeds'].numel() > 0:
+            data['lane', 'feeds_into', 'lane'].edge_index = self.static_edges['feeds']
+
+        return data
