@@ -1,0 +1,2109 @@
+{
+  "meta": {
+    "scenario": "grid3x3",
+    "flow_rate": 300,
+    "steps": 300
+  },
+  "data": [
+    {
+      "step": 1,
+      "vehicles": 20,
+      "avgSpeed": 0.0,
+      "waitingTime": 0.0,
+      "maxQueue": 1
+    },
+    {
+      "step": 2,
+      "vehicles": 20,
+      "avgSpeed": 1.6595,
+      "waitingTime": 0.0,
+      "maxQueue": 0
+    },
+    {
+      "step": 3,
+      "vehicles": 20,
+      "avgSpeed": 3.3200000000000003,
+      "waitingTime": 0.0,
+      "maxQueue": 0
+    },
+    {
+      "step": 4,
+      "vehicles": 22,
+      "avgSpeed": 4.591363636363636,
+      "waitingTime": 0.0,
+      "maxQueue": 1
+    },
+    {
+      "step": 5,
+      "vehicles": 22,
+      "avgSpeed": 6.327272727272727,
+      "waitingTime": 0.0,
+      "maxQueue": 0
+    },
+    {
+      "step": 6,
+      "vehicles": 22,
+      "avgSpeed": 8.112727272727271,
+      "waitingTime": 0.0,
+      "maxQueue": 0
+    },
+    {
+      "step": 7,
+      "vehicles": 22,
+      "avgSpeed": 9.851818181818182,
+      "waitingTime": 0.0,
+      "maxQueue": 0
+    },
+    {
+      "step": 8,
+      "vehicles": 22,
+      "avgSpeed": 11.024090909090908,
+      "waitingTime": 0.0,
+      "maxQueue": 0
+    },
+    {
+      "step": 9,
+      "vehicles": 24,
+      "avgSpeed": 10.827916666666669,
+      "waitingTime": 0.0,
+      "maxQueue": 1
+    },
+    {
+      "step": 10,
+      "vehicles": 24,
+      "avgSpeed": 11.527916666666664,
+      "waitingTime": 0.0,
+      "maxQueue": 0
+    },
+    {
+      "step": 11,
+      "vehicles": 24,
+      "avgSpeed": 11.924166666666665,
+      "waitingTime": 0.0,
+      "maxQueue": 0
+    },
+    {
+      "step": 12,
+      "vehicles": 26,
+      "avgSpeed": 11.330384615384615,
+      "waitingTime": 0.0,
+      "maxQueue": 1
+    },
+    {
+      "step": 13,
+      "vehicles": 41,
+      "avgSpeed": 7.478780487804875,
+      "waitingTime": 0.0,
+      "maxQueue": 1
+    },
+    {
+      "step": 14,
+      "vehicles": 43,
+      "avgSpeed": 8.087441860465118,
+      "waitingTime": 0.0,
+      "maxQueue": 1
+    },
+    {
+      "step": 15,
+      "vehicles": 46,
+      "avgSpeed": 8.584565217391305,
+      "waitingTime": 0.0,
+      "maxQueue": 1
+    },
+    {
+      "step": 16,
+      "vehicles": 51,
+      "avgSpeed": 8.5178,
+      "waitingTime": 0.0,
+      "maxQueue": 1
+    },
+    {
+      "step": 17,
+      "vehicles": 52,
+      "avgSpeed": 9.312600000000002,
+      "waitingTime": 0.0,
+      "maxQueue": 1
+    },
+    {
+      "step": 18,
+      "vehicles": 52,
+      "avgSpeed": 10.428799999999999,
+      "waitingTime": 0.0,
+      "maxQueue": 0
+    },
+    {
+      "step": 19,
+      "vehicles": 52,
+      "avgSpeed": 11.4,
+      "waitingTime": 0.0,
+      "maxQueue": 0
+    },
+    {
+      "step": 20,
+      "vehicles": 52,
+      "avgSpeed": 12.063600000000001,
+      "waitingTime": 0.0,
+      "maxQueue": 0
+    },
+    {
+      "step": 21,
+      "vehicles": 52,
+      "avgSpeed": 11.8916,
+      "waitingTime": 0.0,
+      "maxQueue": 0
+    },
+    {
+      "step": 22,
+      "vehicles": 53,
+      "avgSpeed": 11.511199999999999,
+      "waitingTime": 0.0,
+      "maxQueue": 1
+    },
+    {
+      "step": 23,
+      "vehicles": 54,
+      "avgSpeed": 10.930400000000002,
+      "waitingTime": 0.0,
+      "maxQueue": 1
+    },
+    {
+      "step": 24,
+      "vehicles": 57,
+      "avgSpeed": 9.908399999999999,
+      "waitingTime": 2.0,
+      "maxQueue": 1
+    },
+    {
+      "step": 25,
+      "vehicles": 70,
+      "avgSpeed": 8.242200000000002,
+      "waitingTime": 7.0,
+      "maxQueue": 2
+    },
+    {
+      "step": 26,
+      "vehicles": 70,
+      "avgSpeed": 8.375000000000002,
+      "waitingTime": 13.0,
+      "maxQueue": 1
+    },
+    {
+      "step": 27,
+      "vehicles": 74,
+      "avgSpeed": 7.9605999999999995,
+      "waitingTime": 20.0,
+      "maxQueue": 2
+    },
+    {
+      "step": 28,
+      "vehicles": 78,
+      "avgSpeed": 8.401,
+      "waitingTime": 30.0,
+      "maxQueue": 3
+    },
+    {
+      "step": 29,
+      "vehicles": 80,
+      "avgSpeed": 8.5186,
+      "waitingTime": 40.0,
+      "maxQueue": 2
+    },
+    {
+      "step": 30,
+      "vehicles": 80,
+      "avgSpeed": 8.953999999999999,
+      "waitingTime": 51.0,
+      "maxQueue": 2
+    },
+    {
+      "step": 31,
+      "vehicles": 82,
+      "avgSpeed": 8.8744,
+      "waitingTime": 62.0,
+      "maxQueue": 3
+    },
+    {
+      "step": 32,
+      "vehicles": 83,
+      "avgSpeed": 8.7804,
+      "waitingTime": 73.0,
+      "maxQueue": 2
+    },
+    {
+      "step": 33,
+      "vehicles": 84,
+      "avgSpeed": 8.7488,
+      "waitingTime": 84.0,
+      "maxQueue": 2
+    },
+    {
+      "step": 34,
+      "vehicles": 86,
+      "avgSpeed": 8.5572,
+      "waitingTime": 96.0,
+      "maxQueue": 2
+    },
+    {
+      "step": 35,
+      "vehicles": 88,
+      "avgSpeed": 8.1016,
+      "waitingTime": 97.0,
+      "maxQueue": 3
+    },
+    {
+      "step": 36,
+      "vehicles": 88,
+      "avgSpeed": 8.175400000000002,
+      "waitingTime": 108.0,
+      "maxQueue": 3
+    },
+    {
+      "step": 37,
+      "vehicles": 102,
+      "avgSpeed": 7.952000000000002,
+      "waitingTime": 110.0,
+      "maxQueue": 4
+    },
+    {
+      "step": 38,
+      "vehicles": 103,
+      "avgSpeed": 8.217,
+      "waitingTime": 123.0,
+      "maxQueue": 3
+    },
+    {
+      "step": 39,
+      "vehicles": 104,
+      "avgSpeed": 8.4516,
+      "waitingTime": 124.0,
+      "maxQueue": 3
+    },
+    {
+      "step": 40,
+      "vehicles": 109,
+      "avgSpeed": 8.093399999999997,
+      "waitingTime": 139.0,
+      "maxQueue": 5
+    },
+    {
+      "step": 41,
+      "vehicles": 111,
+      "avgSpeed": 8.285600000000002,
+      "waitingTime": 139.0,
+      "maxQueue": 4
+    },
+    {
+      "step": 42,
+      "vehicles": 111,
+      "avgSpeed": 8.308199999999998,
+      "waitingTime": 153.0,
+      "maxQueue": 4
+    },
+    {
+      "step": 43,
+      "vehicles": 115,
+      "avgSpeed": 7.793999999999999,
+      "waitingTime": 161.0,
+      "maxQueue": 4
+    },
+    {
+      "step": 44,
+      "vehicles": 115,
+      "avgSpeed": 7.651799999999998,
+      "waitingTime": 174.0,
+      "maxQueue": 4
+    },
+    {
+      "step": 45,
+      "vehicles": 116,
+      "avgSpeed": 7.649399999999998,
+      "waitingTime": 166.0,
+      "maxQueue": 4
+    },
+    {
+      "step": 46,
+      "vehicles": 119,
+      "avgSpeed": 7.528200000000001,
+      "waitingTime": 74.0,
+      "maxQueue": 3
+    },
+    {
+      "step": 47,
+      "vehicles": 119,
+      "avgSpeed": 7.884600000000001,
+      "waitingTime": 4.0,
+      "maxQueue": 2
+    },
+    {
+      "step": 48,
+      "vehicles": 119,
+      "avgSpeed": 8.443999999999999,
+      "waitingTime": 0.0,
+      "maxQueue": 1
+    },
+    {
+      "step": 49,
+      "vehicles": 134,
+      "avgSpeed": 8.8094,
+      "waitingTime": 2.0,
+      "maxQueue": 2
+    },
+    {
+      "step": 50,
+      "vehicles": 134,
+      "avgSpeed": 9.179199999999998,
+      "waitingTime": 5.0,
+      "maxQueue": 1
+    },
+    {
+      "step": 51,
+      "vehicles": 134,
+      "avgSpeed": 9.4734,
+      "waitingTime": 8.0,
+      "maxQueue": 1
+    },
+    {
+      "step": 52,
+      "vehicles": 138,
+      "avgSpeed": 9.750199999999994,
+      "waitingTime": 12.0,
+      "maxQueue": 2
+    },
+    {
+      "step": 53,
+      "vehicles": 141,
+      "avgSpeed": 9.1632,
+      "waitingTime": 17.0,
+      "maxQueue": 2
+    },
+    {
+      "step": 54,
+      "vehicles": 142,
+      "avgSpeed": 8.993400000000001,
+      "waitingTime": 23.0,
+      "maxQueue": 2
+    },
+    {
+      "step": 55,
+      "vehicles": 142,
+      "avgSpeed": 9.0074,
+      "waitingTime": 31.0,
+      "maxQueue": 2
+    },
+    {
+      "step": 56,
+      "vehicles": 143,
+      "avgSpeed": 8.684600000000001,
+      "waitingTime": 40.0,
+      "maxQueue": 2
+    },
+    {
+      "step": 57,
+      "vehicles": 146,
+      "avgSpeed": 7.778599999999999,
+      "waitingTime": 50.0,
+      "maxQueue": 2
+    },
+    {
+      "step": 58,
+      "vehicles": 148,
+      "avgSpeed": 7.052600000000001,
+      "waitingTime": 60.0,
+      "maxQueue": 2
+    },
+    {
+      "step": 59,
+      "vehicles": 148,
+      "avgSpeed": 7.1819999999999995,
+      "waitingTime": 72.0,
+      "maxQueue": 3
+    },
+    {
+      "step": 60,
+      "vehicles": 148,
+      "avgSpeed": 7.381199999999998,
+      "waitingTime": 87.0,
+      "maxQueue": 3
+    },
+    {
+      "step": 61,
+      "vehicles": 163,
+      "avgSpeed": 7.247399999999998,
+      "waitingTime": 96.0,
+      "maxQueue": 4
+    },
+    {
+      "step": 62,
+      "vehicles": 163,
+      "avgSpeed": 7.092399999999999,
+      "waitingTime": 113.0,
+      "maxQueue": 3
+    },
+    {
+      "step": 63,
+      "vehicles": 164,
+      "avgSpeed": 6.9368,
+      "waitingTime": 125.0,
+      "maxQueue": 3
+    },
+    {
+      "step": 64,
+      "vehicles": 168,
+      "avgSpeed": 6.8196,
+      "waitingTime": 142.0,
+      "maxQueue": 4
+    },
+    {
+      "step": 65,
+      "vehicles": 169,
+      "avgSpeed": 6.813399999999999,
+      "waitingTime": 160.0,
+      "maxQueue": 4
+    },
+    {
+      "step": 66,
+      "vehicles": 171,
+      "avgSpeed": 6.845599999999998,
+      "waitingTime": 180.0,
+      "maxQueue": 5
+    },
+    {
+      "step": 67,
+      "vehicles": 174,
+      "avgSpeed": 6.7324,
+      "waitingTime": 200.0,
+      "maxQueue": 5
+    },
+    {
+      "step": 68,
+      "vehicles": 174,
+      "avgSpeed": 6.784000000000001,
+      "waitingTime": 221.0,
+      "maxQueue": 5
+    },
+    {
+      "step": 69,
+      "vehicles": 177,
+      "avgSpeed": 6.585400000000001,
+      "waitingTime": 226.0,
+      "maxQueue": 5
+    },
+    {
+      "step": 70,
+      "vehicles": 177,
+      "avgSpeed": 6.829000000000001,
+      "waitingTime": 246.0,
+      "maxQueue": 5
+    },
+    {
+      "step": 71,
+      "vehicles": 179,
+      "avgSpeed": 7.009400000000002,
+      "waitingTime": 243.0,
+      "maxQueue": 5
+    },
+    {
+      "step": 72,
+      "vehicles": 179,
+      "avgSpeed": 7.224799999999999,
+      "waitingTime": 261.0,
+      "maxQueue": 5
+    },
+    {
+      "step": 73,
+      "vehicles": 196,
+      "avgSpeed": 7.385200000000001,
+      "waitingTime": 279.0,
+      "maxQueue": 6
+    },
+    {
+      "step": 74,
+      "vehicles": 197,
+      "avgSpeed": 7.4152,
+      "waitingTime": 297.0,
+      "maxQueue": 6
+    },
+    {
+      "step": 75,
+      "vehicles": 197,
+      "avgSpeed": 7.542000000000002,
+      "waitingTime": 315.0,
+      "maxQueue": 6
+    },
+    {
+      "step": 76,
+      "vehicles": 203,
+      "avgSpeed": 7.426599999999999,
+      "waitingTime": 306.0,
+      "maxQueue": 7
+    },
+    {
+      "step": 77,
+      "vehicles": 203,
+      "avgSpeed": 7.487400000000001,
+      "waitingTime": 324.0,
+      "maxQueue": 6
+    },
+    {
+      "step": 78,
+      "vehicles": 204,
+      "avgSpeed": 7.076799999999999,
+      "waitingTime": 342.0,
+      "maxQueue": 6
+    },
+    {
+      "step": 79,
+      "vehicles": 206,
+      "avgSpeed": 7.043999999999999,
+      "waitingTime": 360.0,
+      "maxQueue": 6
+    },
+    {
+      "step": 80,
+      "vehicles": 208,
+      "avgSpeed": 7.0544,
+      "waitingTime": 357.0,
+      "maxQueue": 6
+    },
+    {
+      "step": 81,
+      "vehicles": 210,
+      "avgSpeed": 7.251999999999998,
+      "waitingTime": 376.0,
+      "maxQueue": 7
+    },
+    {
+      "step": 82,
+      "vehicles": 210,
+      "avgSpeed": 7.435599999999999,
+      "waitingTime": 395.0,
+      "maxQueue": 6
+    },
+    {
+      "step": 83,
+      "vehicles": 210,
+      "avgSpeed": 7.436200000000003,
+      "waitingTime": 414.0,
+      "maxQueue": 6
+    },
+    {
+      "step": 84,
+      "vehicles": 212,
+      "avgSpeed": 7.542200000000001,
+      "waitingTime": 398.0,
+      "maxQueue": 7
+    },
+    {
+      "step": 85,
+      "vehicles": 226,
+      "avgSpeed": 7.5760000000000005,
+      "waitingTime": 366.0,
+      "maxQueue": 8
+    },
+    {
+      "step": 86,
+      "vehicles": 226,
+      "avgSpeed": 7.804599999999998,
+      "waitingTime": 382.0,
+      "maxQueue": 7
+    },
+    {
+      "step": 87,
+      "vehicles": 228,
+      "avgSpeed": 7.856,
+      "waitingTime": 398.0,
+      "maxQueue": 7
+    },
+    {
+      "step": 88,
+      "vehicles": 232,
+      "avgSpeed": 7.733200000000002,
+      "waitingTime": 414.0,
+      "maxQueue": 8
+    },
+    {
+      "step": 89,
+      "vehicles": 234,
+      "avgSpeed": 7.349,
+      "waitingTime": 431.0,
+      "maxQueue": 7
+    },
+    {
+      "step": 90,
+      "vehicles": 234,
+      "avgSpeed": 6.866199999999999,
+      "waitingTime": 448.0,
+      "maxQueue": 7
+    },
+    {
+      "step": 91,
+      "vehicles": 242,
+      "avgSpeed": 6.595199999999998,
+      "waitingTime": 138.0,
+      "maxQueue": 6
+    },
+    {
+      "step": 92,
+      "vehicles": 242,
+      "avgSpeed": 6.566600000000002,
+      "waitingTime": 29.0,
+      "maxQueue": 5
+    },
+    {
+      "step": 93,
+      "vehicles": 242,
+      "avgSpeed": 6.705200000000001,
+      "waitingTime": 11.0,
+      "maxQueue": 5
+    },
+    {
+      "step": 94,
+      "vehicles": 243,
+      "avgSpeed": 6.9251999999999985,
+      "waitingTime": 12.0,
+      "maxQueue": 4
+    },
+    {
+      "step": 95,
+      "vehicles": 243,
+      "avgSpeed": 7.058400000000001,
+      "waitingTime": 22.0,
+      "maxQueue": 4
+    },
+    {
+      "step": 96,
+      "vehicles": 243,
+      "avgSpeed": 7.266600000000002,
+      "waitingTime": 32.0,
+      "maxQueue": 4
+    },
+    {
+      "step": 97,
+      "vehicles": 258,
+      "avgSpeed": 7.427400000000001,
+      "waitingTime": 45.0,
+      "maxQueue": 5
+    },
+    {
+      "step": 98,
+      "vehicles": 260,
+      "avgSpeed": 7.362,
+      "waitingTime": 59.0,
+      "maxQueue": 5
+    },
+    {
+      "step": 99,
+      "vehicles": 261,
+      "avgSpeed": 7.0329999999999995,
+      "waitingTime": 76.0,
+      "maxQueue": 5
+    },
+    {
+      "step": 100,
+      "vehicles": 267,
+      "avgSpeed": 6.7412,
+      "waitingTime": 95.0,
+      "maxQueue": 5
+    },
+    {
+      "step": 101,
+      "vehicles": 266,
+      "avgSpeed": 6.672599999999999,
+      "waitingTime": 114.0,
+      "maxQueue": 5
+    },
+    {
+      "step": 102,
+      "vehicles": 266,
+      "avgSpeed": 6.578600000000002,
+      "waitingTime": 133.0,
+      "maxQueue": 5
+    },
+    {
+      "step": 103,
+      "vehicles": 266,
+      "avgSpeed": 6.470399999999999,
+      "waitingTime": 156.0,
+      "maxQueue": 6
+    },
+    {
+      "step": 104,
+      "vehicles": 268,
+      "avgSpeed": 6.262799999999999,
+      "waitingTime": 179.0,
+      "maxQueue": 6
+    },
+    {
+      "step": 105,
+      "vehicles": 267,
+      "avgSpeed": 6.329400000000001,
+      "waitingTime": 202.0,
+      "maxQueue": 6
+    },
+    {
+      "step": 106,
+      "vehicles": 267,
+      "avgSpeed": 6.1676,
+      "waitingTime": 225.0,
+      "maxQueue": 7
+    },
+    {
+      "step": 107,
+      "vehicles": 265,
+      "avgSpeed": 6.2626,
+      "waitingTime": 249.0,
+      "maxQueue": 7
+    },
+    {
+      "step": 108,
+      "vehicles": 265,
+      "avgSpeed": 6.4298,
+      "waitingTime": 273.0,
+      "maxQueue": 7
+    },
+    {
+      "step": 109,
+      "vehicles": 279,
+      "avgSpeed": 6.4324,
+      "waitingTime": 298.0,
+      "maxQueue": 7
+    },
+    {
+      "step": 110,
+      "vehicles": 279,
+      "avgSpeed": 6.365200000000001,
+      "waitingTime": 323.0,
+      "maxQueue": 7
+    },
+    {
+      "step": 111,
+      "vehicles": 280,
+      "avgSpeed": 5.922599999999999,
+      "waitingTime": 348.0,
+      "maxQueue": 7
+    },
+    {
+      "step": 112,
+      "vehicles": 284,
+      "avgSpeed": 5.5864,
+      "waitingTime": 373.0,
+      "maxQueue": 7
+    },
+    {
+      "step": 113,
+      "vehicles": 284,
+      "avgSpeed": 5.600600000000001,
+      "waitingTime": 399.0,
+      "maxQueue": 7
+    },
+    {
+      "step": 114,
+      "vehicles": 287,
+      "avgSpeed": 4.7992,
+      "waitingTime": 426.0,
+      "maxQueue": 7
+    },
+    {
+      "step": 115,
+      "vehicles": 287,
+      "avgSpeed": 5.042199999999999,
+      "waitingTime": 454.0,
+      "maxQueue": 7
+    },
+    {
+      "step": 116,
+      "vehicles": 286,
+      "avgSpeed": 5.192,
+      "waitingTime": 482.0,
+      "maxQueue": 7
+    },
+    {
+      "step": 117,
+      "vehicles": 287,
+      "avgSpeed": 5.3452,
+      "waitingTime": 510.0,
+      "maxQueue": 7
+    },
+    {
+      "step": 118,
+      "vehicles": 287,
+      "avgSpeed": 5.4398,
+      "waitingTime": 538.0,
+      "maxQueue": 7
+    },
+    {
+      "step": 119,
+      "vehicles": 287,
+      "avgSpeed": 5.443200000000001,
+      "waitingTime": 566.0,
+      "maxQueue": 7
+    },
+    {
+      "step": 120,
+      "vehicles": 287,
+      "avgSpeed": 5.4042,
+      "waitingTime": 594.0,
+      "maxQueue": 7
+    },
+    {
+      "step": 121,
+      "vehicles": 305,
+      "avgSpeed": 4.7068,
+      "waitingTime": 623.0,
+      "maxQueue": 8
+    },
+    {
+      "step": 122,
+      "vehicles": 305,
+      "avgSpeed": 4.610200000000001,
+      "waitingTime": 652.0,
+      "maxQueue": 7
+    },
+    {
+      "step": 123,
+      "vehicles": 305,
+      "avgSpeed": 4.658199999999999,
+      "waitingTime": 681.0,
+      "maxQueue": 7
+    },
+    {
+      "step": 124,
+      "vehicles": 309,
+      "avgSpeed": 4.586600000000001,
+      "waitingTime": 711.0,
+      "maxQueue": 8
+    },
+    {
+      "step": 125,
+      "vehicles": 313,
+      "avgSpeed": 4.037,
+      "waitingTime": 742.0,
+      "maxQueue": 7
+    },
+    {
+      "step": 126,
+      "vehicles": 315,
+      "avgSpeed": 3.969,
+      "waitingTime": 773.0,
+      "maxQueue": 7
+    },
+    {
+      "step": 127,
+      "vehicles": 316,
+      "avgSpeed": 3.9736000000000007,
+      "waitingTime": 804.0,
+      "maxQueue": 8
+    },
+    {
+      "step": 128,
+      "vehicles": 316,
+      "avgSpeed": 4.1686000000000005,
+      "waitingTime": 836.0,
+      "maxQueue": 7
+    },
+    {
+      "step": 129,
+      "vehicles": 318,
+      "avgSpeed": 4.0656,
+      "waitingTime": 868.0,
+      "maxQueue": 7
+    },
+    {
+      "step": 130,
+      "vehicles": 320,
+      "avgSpeed": 4.172999999999999,
+      "waitingTime": 900.0,
+      "maxQueue": 7
+    },
+    {
+      "step": 131,
+      "vehicles": 316,
+      "avgSpeed": 4.2454,
+      "waitingTime": 932.0,
+      "maxQueue": 7
+    },
+    {
+      "step": 132,
+      "vehicles": 316,
+      "avgSpeed": 4.2316,
+      "waitingTime": 964.0,
+      "maxQueue": 8
+    },
+    {
+      "step": 133,
+      "vehicles": 329,
+      "avgSpeed": 4.0127999999999995,
+      "waitingTime": 996.0,
+      "maxQueue": 9
+    },
+    {
+      "step": 134,
+      "vehicles": 327,
+      "avgSpeed": 3.8012,
+      "waitingTime": 1029.0,
+      "maxQueue": 8
+    },
+    {
+      "step": 135,
+      "vehicles": 326,
+      "avgSpeed": 3.7363999999999993,
+      "waitingTime": 1063.0,
+      "maxQueue": 8
+    },
+    {
+      "step": 136,
+      "vehicles": 332,
+      "avgSpeed": 3.0627999999999993,
+      "waitingTime": 589.0,
+      "maxQueue": 8
+    },
+    {
+      "step": 137,
+      "vehicles": 331,
+      "avgSpeed": 3.6997999999999998,
+      "waitingTime": 285.0,
+      "maxQueue": 6
+    },
+    {
+      "step": 138,
+      "vehicles": 331,
+      "avgSpeed": 4.5306,
+      "waitingTime": 211.0,
+      "maxQueue": 5
+    },
+    {
+      "step": 139,
+      "vehicles": 329,
+      "avgSpeed": 5.5232,
+      "waitingTime": 45.0,
+      "maxQueue": 4
+    },
+    {
+      "step": 140,
+      "vehicles": 330,
+      "avgSpeed": 6.358,
+      "waitingTime": 16.0,
+      "maxQueue": 4
+    },
+    {
+      "step": 141,
+      "vehicles": 330,
+      "avgSpeed": 7.529800000000002,
+      "waitingTime": 15.0,
+      "maxQueue": 3
+    },
+    {
+      "step": 142,
+      "vehicles": 330,
+      "avgSpeed": 8.2976,
+      "waitingTime": 13.0,
+      "maxQueue": 3
+    },
+    {
+      "step": 143,
+      "vehicles": 333,
+      "avgSpeed": 8.9344,
+      "waitingTime": 17.0,
+      "maxQueue": 3
+    },
+    {
+      "step": 144,
+      "vehicles": 333,
+      "avgSpeed": 9.523599999999998,
+      "waitingTime": 17.0,
+      "maxQueue": 3
+    },
+    {
+      "step": 145,
+      "vehicles": 346,
+      "avgSpeed": 10.056999999999999,
+      "waitingTime": 21.0,
+      "maxQueue": 4
+    },
+    {
+      "step": 146,
+      "vehicles": 348,
+      "avgSpeed": 10.140399999999998,
+      "waitingTime": 31.0,
+      "maxQueue": 4
+    },
+    {
+      "step": 147,
+      "vehicles": 348,
+      "avgSpeed": 10.162199999999999,
+      "waitingTime": 36.0,
+      "maxQueue": 5
+    },
+    {
+      "step": 148,
+      "vehicles": 354,
+      "avgSpeed": 10.558600000000002,
+      "waitingTime": 33.0,
+      "maxQueue": 5
+    },
+    {
+      "step": 149,
+      "vehicles": 353,
+      "avgSpeed": 10.7866,
+      "waitingTime": 37.0,
+      "maxQueue": 6
+    },
+    {
+      "step": 150,
+      "vehicles": 353,
+      "avgSpeed": 11.0278,
+      "waitingTime": 41.0,
+      "maxQueue": 6
+    },
+    {
+      "step": 151,
+      "vehicles": 352,
+      "avgSpeed": 11.267600000000002,
+      "waitingTime": 30.0,
+      "maxQueue": 6
+    },
+    {
+      "step": 152,
+      "vehicles": 347,
+      "avgSpeed": 11.576199999999998,
+      "waitingTime": 33.0,
+      "maxQueue": 6
+    },
+    {
+      "step": 153,
+      "vehicles": 346,
+      "avgSpeed": 11.593999999999996,
+      "waitingTime": 36.0,
+      "maxQueue": 6
+    },
+    {
+      "step": 154,
+      "vehicles": 349,
+      "avgSpeed": 11.6864,
+      "waitingTime": 29.0,
+      "maxQueue": 6
+    },
+    {
+      "step": 155,
+      "vehicles": 349,
+      "avgSpeed": 11.747600000000002,
+      "waitingTime": 31.0,
+      "maxQueue": 6
+    },
+    {
+      "step": 156,
+      "vehicles": 350,
+      "avgSpeed": 11.632199999999997,
+      "waitingTime": 45.0,
+      "maxQueue": 6
+    },
+    {
+      "step": 157,
+      "vehicles": 361,
+      "avgSpeed": 11.7716,
+      "waitingTime": 48.0,
+      "maxQueue": 6
+    },
+    {
+      "step": 158,
+      "vehicles": 360,
+      "avgSpeed": 11.601599999999998,
+      "waitingTime": 73.0,
+      "maxQueue": 6
+    },
+    {
+      "step": 159,
+      "vehicles": 359,
+      "avgSpeed": 11.1334,
+      "waitingTime": 77.0,
+      "maxQueue": 6
+    },
+    {
+      "step": 160,
+      "vehicles": 358,
+      "avgSpeed": 10.6096,
+      "waitingTime": 113.0,
+      "maxQueue": 6
+    },
+    {
+      "step": 161,
+      "vehicles": 356,
+      "avgSpeed": 10.595400000000005,
+      "waitingTime": 106.0,
+      "maxQueue": 6
+    },
+    {
+      "step": 162,
+      "vehicles": 352,
+      "avgSpeed": 10.599,
+      "waitingTime": 112.0,
+      "maxQueue": 6
+    },
+    {
+      "step": 163,
+      "vehicles": 351,
+      "avgSpeed": 10.609199999999998,
+      "waitingTime": 118.0,
+      "maxQueue": 6
+    },
+    {
+      "step": 164,
+      "vehicles": 346,
+      "avgSpeed": 10.349799999999998,
+      "waitingTime": 124.0,
+      "maxQueue": 6
+    },
+    {
+      "step": 165,
+      "vehicles": 342,
+      "avgSpeed": 9.928,
+      "waitingTime": 184.0,
+      "maxQueue": 6
+    },
+    {
+      "step": 166,
+      "vehicles": 339,
+      "avgSpeed": 9.7876,
+      "waitingTime": 193.0,
+      "maxQueue": 6
+    },
+    {
+      "step": 167,
+      "vehicles": 336,
+      "avgSpeed": 9.6748,
+      "waitingTime": 209.0,
+      "maxQueue": 6
+    },
+    {
+      "step": 168,
+      "vehicles": 336,
+      "avgSpeed": 9.7922,
+      "waitingTime": 219.0,
+      "maxQueue": 6
+    },
+    {
+      "step": 169,
+      "vehicles": 353,
+      "avgSpeed": 9.946,
+      "waitingTime": 220.0,
+      "maxQueue": 7
+    },
+    {
+      "step": 170,
+      "vehicles": 355,
+      "avgSpeed": 10.0196,
+      "waitingTime": 182.0,
+      "maxQueue": 6
+    },
+    {
+      "step": 171,
+      "vehicles": 355,
+      "avgSpeed": 10.053200000000002,
+      "waitingTime": 189.0,
+      "maxQueue": 7
+    },
+    {
+      "step": 172,
+      "vehicles": 359,
+      "avgSpeed": 9.9206,
+      "waitingTime": 196.0,
+      "maxQueue": 7
+    },
+    {
+      "step": 173,
+      "vehicles": 359,
+      "avgSpeed": 10.133199999999999,
+      "waitingTime": 203.0,
+      "maxQueue": 7
+    },
+    {
+      "step": 174,
+      "vehicles": 359,
+      "avgSpeed": 10.0214,
+      "waitingTime": 210.0,
+      "maxQueue": 8
+    },
+    {
+      "step": 175,
+      "vehicles": 358,
+      "avgSpeed": 9.9136,
+      "waitingTime": 242.0,
+      "maxQueue": 9
+    },
+    {
+      "step": 176,
+      "vehicles": 359,
+      "avgSpeed": 10.1278,
+      "waitingTime": 251.0,
+      "maxQueue": 9
+    },
+    {
+      "step": 177,
+      "vehicles": 358,
+      "avgSpeed": 10.1904,
+      "waitingTime": 260.0,
+      "maxQueue": 10
+    },
+    {
+      "step": 178,
+      "vehicles": 355,
+      "avgSpeed": 9.810199999999998,
+      "waitingTime": 304.0,
+      "maxQueue": 10
+    },
+    {
+      "step": 179,
+      "vehicles": 352,
+      "avgSpeed": 9.3664,
+      "waitingTime": 333.0,
+      "maxQueue": 11
+    },
+    {
+      "step": 180,
+      "vehicles": 350,
+      "avgSpeed": 8.894800000000002,
+      "waitingTime": 345.0,
+      "maxQueue": 11
+    },
+    {
+      "step": 181,
+      "vehicles": 366,
+      "avgSpeed": 8.1276,
+      "waitingTime": 137.0,
+      "maxQueue": 11
+    },
+    {
+      "step": 182,
+      "vehicles": 365,
+      "avgSpeed": 8.040799999999997,
+      "waitingTime": 71.0,
+      "maxQueue": 10
+    },
+    {
+      "step": 183,
+      "vehicles": 364,
+      "avgSpeed": 7.566999999999999,
+      "waitingTime": 17.0,
+      "maxQueue": 9
+    },
+    {
+      "step": 184,
+      "vehicles": 367,
+      "avgSpeed": 7.229,
+      "waitingTime": 14.0,
+      "maxQueue": 8
+    },
+    {
+      "step": 185,
+      "vehicles": 366,
+      "avgSpeed": 6.879799999999998,
+      "waitingTime": 24.0,
+      "maxQueue": 7
+    },
+    {
+      "step": 186,
+      "vehicles": 363,
+      "avgSpeed": 6.5168,
+      "waitingTime": 35.0,
+      "maxQueue": 7
+    },
+    {
+      "step": 187,
+      "vehicles": 366,
+      "avgSpeed": 6.368000000000002,
+      "waitingTime": 48.0,
+      "maxQueue": 6
+    },
+    {
+      "step": 188,
+      "vehicles": 364,
+      "avgSpeed": 6.1770000000000005,
+      "waitingTime": 65.0,
+      "maxQueue": 7
+    },
+    {
+      "step": 189,
+      "vehicles": 364,
+      "avgSpeed": 5.653199999999999,
+      "waitingTime": 82.0,
+      "maxQueue": 7
+    },
+    {
+      "step": 190,
+      "vehicles": 362,
+      "avgSpeed": 5.278000000000002,
+      "waitingTime": 102.0,
+      "maxQueue": 7
+    },
+    {
+      "step": 191,
+      "vehicles": 361,
+      "avgSpeed": 4.9765999999999995,
+      "waitingTime": 124.0,
+      "maxQueue": 6
+    },
+    {
+      "step": 192,
+      "vehicles": 360,
+      "avgSpeed": 4.8378000000000005,
+      "waitingTime": 150.0,
+      "maxQueue": 7
+    },
+    {
+      "step": 193,
+      "vehicles": 374,
+      "avgSpeed": 4.4846,
+      "waitingTime": 178.0,
+      "maxQueue": 7
+    },
+    {
+      "step": 194,
+      "vehicles": 375,
+      "avgSpeed": 4.454000000000001,
+      "waitingTime": 207.0,
+      "maxQueue": 8
+    },
+    {
+      "step": 195,
+      "vehicles": 375,
+      "avgSpeed": 3.8819999999999992,
+      "waitingTime": 236.0,
+      "maxQueue": 8
+    },
+    {
+      "step": 196,
+      "vehicles": 376,
+      "avgSpeed": 3.9974000000000007,
+      "waitingTime": 266.0,
+      "maxQueue": 9
+    },
+    {
+      "step": 197,
+      "vehicles": 376,
+      "avgSpeed": 3.7538000000000005,
+      "waitingTime": 297.0,
+      "maxQueue": 10
+    },
+    {
+      "step": 198,
+      "vehicles": 378,
+      "avgSpeed": 3.7978000000000005,
+      "waitingTime": 329.0,
+      "maxQueue": 11
+    },
+    {
+      "step": 199,
+      "vehicles": 378,
+      "avgSpeed": 3.8436000000000003,
+      "waitingTime": 361.0,
+      "maxQueue": 11
+    },
+    {
+      "step": 200,
+      "vehicles": 378,
+      "avgSpeed": 3.8752,
+      "waitingTime": 394.0,
+      "maxQueue": 11
+    },
+    {
+      "step": 201,
+      "vehicles": 378,
+      "avgSpeed": 3.8674,
+      "waitingTime": 427.0,
+      "maxQueue": 11
+    },
+    {
+      "step": 202,
+      "vehicles": 378,
+      "avgSpeed": 3.8733999999999997,
+      "waitingTime": 460.0,
+      "maxQueue": 11
+    },
+    {
+      "step": 203,
+      "vehicles": 375,
+      "avgSpeed": 3.8632,
+      "waitingTime": 494.0,
+      "maxQueue": 11
+    },
+    {
+      "step": 204,
+      "vehicles": 377,
+      "avgSpeed": 2.9252000000000002,
+      "waitingTime": 528.0,
+      "maxQueue": 11
+    },
+    {
+      "step": 205,
+      "vehicles": 381,
+      "avgSpeed": 2.8812,
+      "waitingTime": 562.0,
+      "maxQueue": 11
+    },
+    {
+      "step": 206,
+      "vehicles": 378,
+      "avgSpeed": 3.0328,
+      "waitingTime": 597.0,
+      "maxQueue": 11
+    },
+    {
+      "step": 207,
+      "vehicles": 375,
+      "avgSpeed": 3.1211999999999995,
+      "waitingTime": 633.0,
+      "maxQueue": 11
+    },
+    {
+      "step": 208,
+      "vehicles": 374,
+      "avgSpeed": 3.198,
+      "waitingTime": 669.0,
+      "maxQueue": 11
+    },
+    {
+      "step": 209,
+      "vehicles": 371,
+      "avgSpeed": 3.0274,
+      "waitingTime": 705.0,
+      "maxQueue": 11
+    },
+    {
+      "step": 210,
+      "vehicles": 368,
+      "avgSpeed": 3.0438,
+      "waitingTime": 741.0,
+      "maxQueue": 11
+    },
+    {
+      "step": 211,
+      "vehicles": 367,
+      "avgSpeed": 2.8382,
+      "waitingTime": 778.0,
+      "maxQueue": 11
+    },
+    {
+      "step": 212,
+      "vehicles": 362,
+      "avgSpeed": 2.8192000000000004,
+      "waitingTime": 815.0,
+      "maxQueue": 11
+    },
+    {
+      "step": 213,
+      "vehicles": 361,
+      "avgSpeed": 2.8152,
+      "waitingTime": 852.0,
+      "maxQueue": 11
+    },
+    {
+      "step": 214,
+      "vehicles": 358,
+      "avgSpeed": 2.7503999999999995,
+      "waitingTime": 889.0,
+      "maxQueue": 11
+    },
+    {
+      "step": 215,
+      "vehicles": 359,
+      "avgSpeed": 2.1216,
+      "waitingTime": 926.0,
+      "maxQueue": 11
+    },
+    {
+      "step": 216,
+      "vehicles": 359,
+      "avgSpeed": 2.1524,
+      "waitingTime": 965.0,
+      "maxQueue": 11
+    },
+    {
+      "step": 217,
+      "vehicles": 375,
+      "avgSpeed": 2.2358,
+      "waitingTime": 1004.0,
+      "maxQueue": 11
+    },
+    {
+      "step": 218,
+      "vehicles": 372,
+      "avgSpeed": 2.2064,
+      "waitingTime": 1043.0,
+      "maxQueue": 11
+    },
+    {
+      "step": 219,
+      "vehicles": 373,
+      "avgSpeed": 1.982,
+      "waitingTime": 1083.0,
+      "maxQueue": 11
+    },
+    {
+      "step": 220,
+      "vehicles": 376,
+      "avgSpeed": 1.995,
+      "waitingTime": 1123.0,
+      "maxQueue": 11
+    },
+    {
+      "step": 221,
+      "vehicles": 377,
+      "avgSpeed": 2.0400000000000005,
+      "waitingTime": 1163.0,
+      "maxQueue": 11
+    },
+    {
+      "step": 222,
+      "vehicles": 374,
+      "avgSpeed": 1.9058000000000002,
+      "waitingTime": 1204.0,
+      "maxQueue": 11
+    },
+    {
+      "step": 223,
+      "vehicles": 374,
+      "avgSpeed": 1.7495999999999998,
+      "waitingTime": 1245.0,
+      "maxQueue": 11
+    },
+    {
+      "step": 224,
+      "vehicles": 370,
+      "avgSpeed": 1.6723999999999999,
+      "waitingTime": 1286.0,
+      "maxQueue": 11
+    },
+    {
+      "step": 225,
+      "vehicles": 370,
+      "avgSpeed": 1.6648000000000003,
+      "waitingTime": 1327.0,
+      "maxQueue": 11
+    },
+    {
+      "step": 226,
+      "vehicles": 370,
+      "avgSpeed": 1.4509999999999996,
+      "waitingTime": 911.0,
+      "maxQueue": 10
+    },
+    {
+      "step": 227,
+      "vehicles": 370,
+      "avgSpeed": 2.2076000000000002,
+      "waitingTime": 628.0,
+      "maxQueue": 9
+    },
+    {
+      "step": 228,
+      "vehicles": 371,
+      "avgSpeed": 3.1289999999999996,
+      "waitingTime": 436.0,
+      "maxQueue": 8
+    },
+    {
+      "step": 229,
+      "vehicles": 383,
+      "avgSpeed": 4.239399999999999,
+      "waitingTime": 262.0,
+      "maxQueue": 7
+    },
+    {
+      "step": 230,
+      "vehicles": 383,
+      "avgSpeed": 5.497199999999999,
+      "waitingTime": 178.0,
+      "maxQueue": 6
+    },
+    {
+      "step": 231,
+      "vehicles": 384,
+      "avgSpeed": 6.7456000000000005,
+      "waitingTime": 38.0,
+      "maxQueue": 6
+    },
+    {
+      "step": 232,
+      "vehicles": 388,
+      "avgSpeed": 8.033999999999999,
+      "waitingTime": 0.0,
+      "maxQueue": 6
+    },
+    {
+      "step": 233,
+      "vehicles": 391,
+      "avgSpeed": 9.133799999999997,
+      "waitingTime": 0.0,
+      "maxQueue": 5
+    },
+    {
+      "step": 234,
+      "vehicles": 392,
+      "avgSpeed": 9.792399999999999,
+      "waitingTime": 0.0,
+      "maxQueue": 6
+    },
+    {
+      "step": 235,
+      "vehicles": 392,
+      "avgSpeed": 10.663999999999998,
+      "waitingTime": 0.0,
+      "maxQueue": 5
+    },
+    {
+      "step": 236,
+      "vehicles": 392,
+      "avgSpeed": 11.1878,
+      "waitingTime": 0.0,
+      "maxQueue": 5
+    },
+    {
+      "step": 237,
+      "vehicles": 389,
+      "avgSpeed": 11.733799999999999,
+      "waitingTime": 0.0,
+      "maxQueue": 5
+    },
+    {
+      "step": 238,
+      "vehicles": 390,
+      "avgSpeed": 11.608799999999999,
+      "waitingTime": 0.0,
+      "maxQueue": 6
+    },
+    {
+      "step": 239,
+      "vehicles": 388,
+      "avgSpeed": 11.856199999999992,
+      "waitingTime": 0.0,
+      "maxQueue": 6
+    },
+    {
+      "step": 240,
+      "vehicles": 385,
+      "avgSpeed": 12.1488,
+      "waitingTime": 0.0,
+      "maxQueue": 6
+    },
+    {
+      "step": 241,
+      "vehicles": 397,
+      "avgSpeed": 12.180200000000003,
+      "waitingTime": 0.0,
+      "maxQueue": 7
+    },
+    {
+      "step": 242,
+      "vehicles": 397,
+      "avgSpeed": 12.332199999999998,
+      "waitingTime": 0.0,
+      "maxQueue": 7
+    },
+    {
+      "step": 243,
+      "vehicles": 396,
+      "avgSpeed": 12.285400000000006,
+      "waitingTime": 0.0,
+      "maxQueue": 7
+    },
+    {
+      "step": 244,
+      "vehicles": 399,
+      "avgSpeed": 12.477800000000002,
+      "waitingTime": 0.0,
+      "maxQueue": 7
+    },
+    {
+      "step": 245,
+      "vehicles": 400,
+      "avgSpeed": 12.446200000000001,
+      "waitingTime": 0.0,
+      "maxQueue": 7
+    },
+    {
+      "step": 246,
+      "vehicles": 400,
+      "avgSpeed": 12.396,
+      "waitingTime": 0.0,
+      "maxQueue": 8
+    },
+    {
+      "step": 247,
+      "vehicles": 402,
+      "avgSpeed": 12.402000000000003,
+      "waitingTime": 0.0,
+      "maxQueue": 7
+    },
+    {
+      "step": 248,
+      "vehicles": 399,
+      "avgSpeed": 12.437200000000004,
+      "waitingTime": 0.0,
+      "maxQueue": 7
+    },
+    {
+      "step": 249,
+      "vehicles": 398,
+      "avgSpeed": 12.068599999999998,
+      "waitingTime": 0.0,
+      "maxQueue": 7
+    },
+    {
+      "step": 250,
+      "vehicles": 390,
+      "avgSpeed": 12.097199999999997,
+      "waitingTime": 0.0,
+      "maxQueue": 7
+    },
+    {
+      "step": 251,
+      "vehicles": 389,
+      "avgSpeed": 11.299399999999999,
+      "waitingTime": 26.0,
+      "maxQueue": 7
+    },
+    {
+      "step": 252,
+      "vehicles": 384,
+      "avgSpeed": 11.079800000000002,
+      "waitingTime": 42.0,
+      "maxQueue": 7
+    },
+    {
+      "step": 253,
+      "vehicles": 394,
+      "avgSpeed": 10.663000000000002,
+      "waitingTime": 77.0,
+      "maxQueue": 9
+    },
+    {
+      "step": 254,
+      "vehicles": 389,
+      "avgSpeed": 10.2998,
+      "waitingTime": 113.0,
+      "maxQueue": 8
+    },
+    {
+      "step": 255,
+      "vehicles": 386,
+      "avgSpeed": 10.291200000000002,
+      "waitingTime": 120.0,
+      "maxQueue": 8
+    },
+    {
+      "step": 256,
+      "vehicles": 386,
+      "avgSpeed": 10.4424,
+      "waitingTime": 127.0,
+      "maxQueue": 8
+    },
+    {
+      "step": 257,
+      "vehicles": 381,
+      "avgSpeed": 10.3304,
+      "waitingTime": 134.0,
+      "maxQueue": 9
+    },
+    {
+      "step": 258,
+      "vehicles": 376,
+      "avgSpeed": 10.076399999999998,
+      "waitingTime": 141.0,
+      "maxQueue": 9
+    },
+    {
+      "step": 259,
+      "vehicles": 376,
+      "avgSpeed": 9.916599999999999,
+      "waitingTime": 171.0,
+      "maxQueue": 9
+    },
+    {
+      "step": 260,
+      "vehicles": 373,
+      "avgSpeed": 9.787799999999999,
+      "waitingTime": 156.0,
+      "maxQueue": 10
+    },
+    {
+      "step": 261,
+      "vehicles": 369,
+      "avgSpeed": 9.671799999999998,
+      "waitingTime": 189.0,
+      "maxQueue": 10
+    },
+    {
+      "step": 262,
+      "vehicles": 367,
+      "avgSpeed": 9.8188,
+      "waitingTime": 199.0,
+      "maxQueue": 11
+    },
+    {
+      "step": 263,
+      "vehicles": 369,
+      "avgSpeed": 10.034399999999998,
+      "waitingTime": 209.0,
+      "maxQueue": 11
+    },
+    {
+      "step": 264,
+      "vehicles": 367,
+      "avgSpeed": 9.832199999999997,
+      "waitingTime": 219.0,
+      "maxQueue": 12
+    },
+    {
+      "step": 265,
+      "vehicles": 381,
+      "avgSpeed": 9.9062,
+      "waitingTime": 225.0,
+      "maxQueue": 12
+    },
+    {
+      "step": 266,
+      "vehicles": 379,
+      "avgSpeed": 9.439400000000001,
+      "waitingTime": 271.0,
+      "maxQueue": 12
+    },
+    {
+      "step": 267,
+      "vehicles": 379,
+      "avgSpeed": 9.569999999999999,
+      "waitingTime": 281.0,
+      "maxQueue": 12
+    },
+    {
+      "step": 268,
+      "vehicles": 381,
+      "avgSpeed": 9.607399999999998,
+      "waitingTime": 291.0,
+      "maxQueue": 13
+    },
+    {
+      "step": 269,
+      "vehicles": 381,
+      "avgSpeed": 9.447200000000002,
+      "waitingTime": 301.0,
+      "maxQueue": 14
+    },
+    {
+      "step": 270,
+      "vehicles": 379,
+      "avgSpeed": 9.3378,
+      "waitingTime": 311.0,
+      "maxQueue": 14
+    },
+    {
+      "step": 271,
+      "vehicles": 380,
+      "avgSpeed": 8.7998,
+      "waitingTime": 204.0,
+      "maxQueue": 13
+    },
+    {
+      "step": 272,
+      "vehicles": 377,
+      "avgSpeed": 8.639,
+      "waitingTime": 115.0,
+      "maxQueue": 12
+    },
+    {
+      "step": 273,
+      "vehicles": 373,
+      "avgSpeed": 8.544,
+      "waitingTime": 37.0,
+      "maxQueue": 11
+    },
+    {
+      "step": 274,
+      "vehicles": 373,
+      "avgSpeed": 8.3798,
+      "waitingTime": 7.0,
+      "maxQueue": 10
+    },
+    {
+      "step": 275,
+      "vehicles": 369,
+      "avgSpeed": 8.350400000000002,
+      "waitingTime": 13.0,
+      "maxQueue": 10
+    },
+    {
+      "step": 276,
+      "vehicles": 367,
+      "avgSpeed": 8.3308,
+      "waitingTime": 20.0,
+      "maxQueue": 11
+    },
+    {
+      "step": 277,
+      "vehicles": 379,
+      "avgSpeed": 8.210999999999999,
+      "waitingTime": 29.0,
+      "maxQueue": 11
+    },
+    {
+      "step": 278,
+      "vehicles": 380,
+      "avgSpeed": 7.494200000000001,
+      "waitingTime": 42.0,
+      "maxQueue": 11
+    },
+    {
+      "step": 279,
+      "vehicles": 378,
+      "avgSpeed": 7.094200000000002,
+      "waitingTime": 55.0,
+      "maxQueue": 12
+    },
+    {
+      "step": 280,
+      "vehicles": 381,
+      "avgSpeed": 6.5832000000000015,
+      "waitingTime": 71.0,
+      "maxQueue": 11
+    },
+    {
+      "step": 281,
+      "vehicles": 379,
+      "avgSpeed": 5.9239999999999995,
+      "waitingTime": 89.0,
+      "maxQueue": 12
+    },
+    {
+      "step": 282,
+      "vehicles": 378,
+      "avgSpeed": 5.598000000000001,
+      "waitingTime": 107.0,
+      "maxQueue": 12
+    },
+    {
+      "step": 283,
+      "vehicles": 377,
+      "avgSpeed": 5.3012,
+      "waitingTime": 127.0,
+      "maxQueue": 12
+    },
+    {
+      "step": 284,
+      "vehicles": 379,
+      "avgSpeed": 5.168399999999999,
+      "waitingTime": 150.0,
+      "maxQueue": 12
+    },
+    {
+      "step": 285,
+      "vehicles": 378,
+      "avgSpeed": 4.8107999999999995,
+      "waitingTime": 176.0,
+      "maxQueue": 13
+    },
+    {
+      "step": 286,
+      "vehicles": 376,
+      "avgSpeed": 4.5344,
+      "waitingTime": 204.0,
+      "maxQueue": 13
+    },
+    {
+      "step": 287,
+      "vehicles": 376,
+      "avgSpeed": 4.555600000000001,
+      "waitingTime": 234.0,
+      "maxQueue": 13
+    },
+    {
+      "step": 288,
+      "vehicles": 374,
+      "avgSpeed": 4.632799999999999,
+      "waitingTime": 264.0,
+      "maxQueue": 14
+    },
+    {
+      "step": 289,
+      "vehicles": 390,
+      "avgSpeed": 4.683999999999998,
+      "waitingTime": 294.0,
+      "maxQueue": 13
+    },
+    {
+      "step": 290,
+      "vehicles": 390,
+      "avgSpeed": 4.7414000000000005,
+      "waitingTime": 324.0,
+      "maxQueue": 13
+    },
+    {
+      "step": 291,
+      "vehicles": 389,
+      "avgSpeed": 4.8557999999999995,
+      "waitingTime": 354.0,
+      "maxQueue": 13
+    },
+    {
+      "step": 292,
+      "vehicles": 392,
+      "avgSpeed": 4.7838,
+      "waitingTime": 385.0,
+      "maxQueue": 14
+    },
+    {
+      "step": 293,
+      "vehicles": 389,
+      "avgSpeed": 4.718799999999999,
+      "waitingTime": 416.0,
+      "maxQueue": 15
+    },
+    {
+      "step": 294,
+      "vehicles": 389,
+      "avgSpeed": 3.9978,
+      "waitingTime": 447.0,
+      "maxQueue": 15
+    },
+    {
+      "step": 295,
+      "vehicles": 384,
+      "avgSpeed": 4.008799999999999,
+      "waitingTime": 478.0,
+      "maxQueue": 16
+    },
+    {
+      "step": 296,
+      "vehicles": 380,
+      "avgSpeed": 3.8264000000000005,
+      "waitingTime": 510.0,
+      "maxQueue": 17
+    },
+    {
+      "step": 297,
+      "vehicles": 378,
+      "avgSpeed": 3.9199999999999995,
+      "waitingTime": 542.0,
+      "maxQueue": 17
+    },
+    {
+      "step": 298,
+      "vehicles": 375,
+      "avgSpeed": 3.9712,
+      "waitingTime": 574.0,
+      "maxQueue": 17
+    },
+    {
+      "step": 299,
+      "vehicles": 373,
+      "avgSpeed": 4.1088,
+      "waitingTime": 606.0,
+      "maxQueue": 17
+    },
+    {
+      "step": 300,
+      "vehicles": 368,
+      "avgSpeed": 4.181799999999999,
+      "waitingTime": 638.0,
+      "maxQueue": 17
+    }
+  ]
+}
