@@ -9,7 +9,11 @@ import requests
 import xml.etree.ElementTree as ET
 
 # Import Config (assuming running from root directory)
-from services.config import Config
+import os
+class Config:
+    REDIS_HOST = os.getenv('REDIS_HOST', 'redis')
+    REDIS_PORT = int(os.getenv('REDIS_PORT', 6379))
+    DASHBOARD_CORS_ORIGIN = os.getenv('DASHBOARD_CORS_ORIGIN', 'http://localhost:5173')
 
 # 1. INITIALIZE APP
 app = FastAPI()

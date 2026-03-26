@@ -24,6 +24,9 @@ def init_model(payload: InitRequest):
 
 @app.get('/health')
 def health():
+    if predictor._weights_cache is None:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=503, detail='Weights not loaded')
     return {'status': 'ready'}
 
 @app.get('/info')

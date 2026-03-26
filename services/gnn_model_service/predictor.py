@@ -6,7 +6,7 @@ from torch_geometric.data import Batch
 
 # Ensure imports to the parent src folder exist or structure properly
 import sys
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../gnn_optimizer')))
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), 'src/gnn_optimizer')))
 
 from src.graphBuilder.graph_builder import TrafficGraphBuilder
 from src.models.hgat_core import RecurrentHGAT
@@ -25,7 +25,9 @@ class GNNPredictor:
         self._load_weights_once()
 
     def _load_weights_once(self):
-        """Loads checkpoint from disk once. Stored in memory for reuse."""
+        if not os.path.exists(self.model_path):
+            print(f'WARNING: Model weights not found at {self.model_path}. Waiting for volume mount.')
+            return  # Don't crash — health will return 503 until weights appear
         self._weights_cache = torch.load(self.model_path, map_location='cpu', weights_only=True)
         print(f'Weights loaded into cache from {self.model_path}')
 
