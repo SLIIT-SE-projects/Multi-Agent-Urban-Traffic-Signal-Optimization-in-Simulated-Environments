@@ -7,3 +7,6 @@ flask
 python-socketio 
 matplotlib
 scikit-learn
+redis>=4.2.0
+requests
+python-socketio[client]

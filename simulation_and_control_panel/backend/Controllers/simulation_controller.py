@@ -1,11 +1,5 @@
 import os
 import sys
-import traci
-import threading
-import time
-import xml.etree.ElementTree as ET
-from optimizers.model_router import ModelRouter
-from optimizers.mpc_adapter import MPCTrafficOptimizer   # Keep only if MPC currently runs in-process
 
 # Add SUMO tools to path
 if 'SUMO_HOME' in os.environ:
@@ -13,6 +7,13 @@ if 'SUMO_HOME' in os.environ:
     sys.path.append(tools)
 else:
     sys.exit("Please set SUMO_HOME environment variable")
+    
+import traci
+import threading
+import time
+import xml.etree.ElementTree as ET
+from optimizers.model_router import ModelRouter
+from optimizers.mpc_adapter import MPCTrafficOptimizer   # Keep only if MPC currently runs in-process
 
 
 class SimulationController:
