@@ -5,6 +5,11 @@ import os
 import redis.asyncio as redis
 import redis as redis_sync
 
+
+# ── PATH FIX: config.py lives in web/backend/ ────────────────────────────────
+sys.path.append(os.path.join(os.path.dirname(__file__), 'web', 'backend'))
+# ─────────────────────────────────────────────────────────────────────────────
+
 # 1. PATH SETUP
 from config import Config
 from service import RemoteOptimizationService
