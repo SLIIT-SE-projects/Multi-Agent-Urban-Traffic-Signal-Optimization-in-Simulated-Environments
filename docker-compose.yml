@@ -23,7 +23,9 @@ services:
       interval: 10s
 
   simulation-manager:
-    build: ./simulation_and_control_panel
+    build:
+      context: .  # <-- Changed: Context is now the repository root
+      dockerfile: simulation_and_control_panel/Dockerfile # <-- Changed: Explicit path to Dockerfile
     ports: [ '5000:5000' ]
     volumes:
       - ./simulation_and_control_panel/scenarios:/app/scenarios
