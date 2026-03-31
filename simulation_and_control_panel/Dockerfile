@@ -9,7 +9,7 @@ WORKDIR /app
 
 # 1. Copy and install simulation panel requirements
 COPY simulation_and_control_panel/requirements.txt ./requirements.txt
-RUN pip3 install --no-cache-dir -r requirements.txt
+RUN pip3 install --no-cache-dir --default-timeout=1000 -r requirements.txt
 
 # REMOVED: mpc_traffic_control install — MPC runs as its own service container
 

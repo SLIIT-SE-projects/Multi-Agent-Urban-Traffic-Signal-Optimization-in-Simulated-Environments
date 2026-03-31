@@ -7,3 +7,5 @@ sumolib
 redis
 numpy
 pandas
+tensorflow-cpu
+scikit-learn

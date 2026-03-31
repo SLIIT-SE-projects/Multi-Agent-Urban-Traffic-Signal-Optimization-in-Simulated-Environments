@@ -4,16 +4,15 @@ import sys
 import os
 import redis.asyncio as redis
 import redis as redis_sync
-
-
-# ── PATH FIX: config.py lives in web/backend/ ────────────────────────────────
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'web', 'backend'))
-# ─────────────────────────────────────────────────────────────────────────────
-
-# 1. PATH SETUP
-from config import Config
-from service import RemoteOptimizationService
 import requests as requests_sync
+
+# 1. PATH FIX: Put web/backend at the absolute front of the path
+backend_path = os.path.join(os.path.dirname(__file__), 'web', 'backend')
+sys.path.insert(0, backend_path)
+
+# 2. EXPLICIT IMPORTS: Force Python to use the exact web/backend file
+from web.backend.config import Config
+from web.backend.service import RemoteOptimizationService
 
 # 2. ADAPTER CLASS
 class RedisSocketAdapter:
