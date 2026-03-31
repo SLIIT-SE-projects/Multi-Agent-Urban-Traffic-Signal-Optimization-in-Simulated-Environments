@@ -7,7 +7,7 @@ import redis as redis_sync
 
 
 # ── PATH FIX: config.py lives in web/backend/ ────────────────────────────────
-sys.path.append(os.path.join(os.path.dirname(__file__), 'web', 'backend'))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'web', 'backend'))
 # ─────────────────────────────────────────────────────────────────────────────
 
 # 1. PATH SETUP

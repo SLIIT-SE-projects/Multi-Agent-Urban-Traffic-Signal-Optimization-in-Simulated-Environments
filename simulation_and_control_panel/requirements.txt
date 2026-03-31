@@ -6,3 +6,4 @@ requests
 sumolib
 redis
 numpy
+pandas
