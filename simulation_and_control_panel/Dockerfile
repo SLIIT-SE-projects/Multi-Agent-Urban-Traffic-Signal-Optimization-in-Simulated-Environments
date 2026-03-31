@@ -11,11 +11,9 @@ WORKDIR /app
 COPY simulation_and_control_panel/requirements.txt ./requirements.txt
 RUN pip3 install --no-cache-dir -r requirements.txt
 
-# 2. Copy and install the sibling mpc_traffic_control package
-COPY services/mpc_traffic_control /tmp/mpc_traffic_control
-RUN pip3 install /tmp/mpc_traffic_control
+# REMOVED: mpc_traffic_control install — MPC runs as its own service container
 
-# 3. Copy the rest of the simulation panel code
+# 2. Copy the rest of the simulation panel code
 COPY simulation_and_control_panel /app
 
 EXPOSE 5000

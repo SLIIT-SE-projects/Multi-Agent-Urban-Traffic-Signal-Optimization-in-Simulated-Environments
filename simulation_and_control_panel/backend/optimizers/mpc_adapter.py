@@ -1,28 +1,31 @@
-
 import os
 import sys
-import traci
 import numpy as np
 
-# --- PATH ---
+# ── PATH FIX (kept for local dev, not needed in Docker) ──────────────────────
 current_dir = os.path.dirname(os.path.abspath(__file__))
-# Root of repo
 project_root = os.path.abspath(os.path.join(current_dir, "../../../"))
 mpc_service_path = os.path.join(project_root, "services/mpc_traffic_control/src")
-
 if mpc_service_path not in sys.path:
-    # print(f"🔌 MPC Adapter: Adding path {mpc_service_path}")
     sys.path.append(mpc_service_path)
 
 try:
+    import traci
     from traffic_mpc.core.controller import MPCController
     from traffic_mpc.core.prediction import DemandPredictor
     from traffic_mpc.config.settings import MPCConfig, OptimizationConfig
+    _MPC_AVAILABLE = True
 except ImportError as e:
-    print(f"❌ MPC Adapter Error: Could not import traffic_mpc. Ensure services/mpc_traffic_control is usable. {e}")
-    raise e
+    _MPC_AVAILABLE = False
+    print(f"⚠️  MPC Adapter: traffic_mpc not available ({e}). MPC optimizer disabled.")
 
 class MPCTrafficOptimizer:
+    def __init__(self, net_path=None):
+        if not _MPC_AVAILABLE:
+            raise ImportError(
+                "traffic_mpc package not installed. "
+                "In Docker, use the mpc-model-service container via ModelRouter instead."
+            )
     def __init__(self, net_path=None):
         """
         Adapts the MPC Controller to the Simulation Control Panel interface.

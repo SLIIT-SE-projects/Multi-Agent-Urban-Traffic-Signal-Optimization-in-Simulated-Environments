@@ -13,7 +13,7 @@ import threading
 import time
 import xml.etree.ElementTree as ET
 from optimizers.model_router import ModelRouter
-from optimizers.mpc_adapter import MPCTrafficOptimizer   # Keep only if MPC currently runs in-process
+# from optimizers.mpc_adapter import MPCTrafficOptimizer   # Keep only if MPC currently runs in-process
 
 
 class SimulationController:
