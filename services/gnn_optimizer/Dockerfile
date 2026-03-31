@@ -8,7 +8,8 @@ WORKDIR /app
 
 # Install dependencies
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+# Add --default-timeout=1000 to prevent the broken pipe
+RUN pip install --no-cache-dir --default-timeout=1000 -r requirements.txt
 
 # Copy the worker code
 COPY . .
