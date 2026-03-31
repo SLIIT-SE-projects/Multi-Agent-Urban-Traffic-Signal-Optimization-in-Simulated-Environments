@@ -1,4 +1,3 @@
-import asyncio
 import json
 import sys
 import os
@@ -6,17 +5,18 @@ import redis.asyncio as redis
 import redis as redis_sync
 import requests as requests_sync
 
-# 1. PATH FIX: Put web/backend at the absolute front of the path
-backend_path = os.path.join(os.path.dirname(__file__), 'web', 'backend')
-sys.path.insert(0, backend_path)
+# --- BYPASS CONFIG CLASS: LOAD ENV DIRECTLY ---
+REDIS_HOST = os.environ.get('REDIS_HOST', 'redis')
+REDIS_PORT = int(os.environ.get('REDIS_PORT', 6379))
+MANAGER_API = os.environ.get('MANAGER_API', 'http://localhost:5000/api')
 
-# 2. EXPLICIT IMPORTS: Force Python to use the exact web/backend file
-from web.backend.config import Config
+# --- PATH FIX FOR SERVICE ---
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'web', 'backend'))
 from web.backend.service import RemoteOptimizationService
 
 # 2. ADAPTER CLASS
 class RedisSocketAdapter:
-    def __init__(self, host=Config.REDIS_HOST, port=Config.REDIS_PORT):
+    def __init__(self, host=REDIS_HOST, port=REDIS_PORT):
         self.r = redis_sync.Redis(host=host, port=port, decode_responses=True)
 
     def emit(self, event, data):
@@ -38,8 +38,8 @@ async def run_gnn_cycle():
     service = RemoteOptimizationService(server_socketio=redis_adapter)
     
     # C. Setup Async Redis for Control Listening
-    print(f"DEBUG: Connecting to Redis at {Config.REDIS_HOST}:{Config.REDIS_PORT}...")
-    control_redis = redis.Redis(host=Config.REDIS_HOST, port=Config.REDIS_PORT, decode_responses=True)
+    print(f"DEBUG: Connecting to Redis at {REDIS_HOST}:{REDIS_PORT}...")
+    control_redis = redis.Redis(host=REDIS_HOST, port=REDIS_PORT, decode_responses=True)
     try:
         await control_redis.ping()
         print("DEBUG: Successfully connected to Redis!")
@@ -79,7 +79,7 @@ async def run_gnn_cycle():
 
             elif command == 'get_model_status':
                 try:
-                    r = requests_sync.get(f'{Config.MANAGER_API}/optimizer/status')
+                    r = requests_sync.get(f'{MANAGER_API}/optimizer/status')
                     status = r.json()
                     redis_adapter.r.publish('model_status', json.dumps(status))
                 except Exception as e:

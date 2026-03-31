@@ -530,4 +530,4 @@ if __name__ == '__main__':
     print(f"Step delay: {config.STEP_DELAY}s")
     print(f"API will be available at: http://localhost:{config.PORT}")
     print("=" * 60)
-    socketio.run(app, debug=config.DEBUG, port=config.PORT, host=config.HOST)
+    socketio.run(app, debug=config.DEBUG, port=config.PORT, host=config.HOST, allow_unsafe_werkzeug=True)
