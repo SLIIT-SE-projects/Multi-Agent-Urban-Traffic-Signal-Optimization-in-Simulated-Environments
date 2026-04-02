@@ -10,6 +10,7 @@ services:
 
   gnn-model-service:
     build: ./services/gnn_model_service
+    image: thilanrandika/traffic-gnn-model:latest  
     ports: [ '8001:8001' ]
     volumes:
       - ./model_weights:/app/weights
@@ -26,6 +27,7 @@ services:
     build:
       context: .  # <-- Changed: Context is now the repository root
       dockerfile: simulation_and_control_panel/Dockerfile # <-- Changed: Explicit path to Dockerfile
+    image: thilanrandika/traffic-sim-manager:latest 
     ports: [ '5000:5000' ]
     volumes:
       - ./simulation_and_control_panel/scenarios:/app/scenarios
@@ -40,6 +42,7 @@ services:
 
   gnn-worker:
     build: ./services/gnn_optimizer
+    image: thilanrandika/traffic-gnn-worker:latest
     environment:
       - REDIS_HOST=redis
       - MANAGER_API=http://simulation-manager:5000/api
@@ -50,6 +53,7 @@ services:
 
   dashboard-api:
     build: ./services/dashboard_api
+    image: thilanrandika/traffic-dashboard-api:latest
     ports: [ '8000:8000' ]
     environment:
       - REDIS_HOST=redis
