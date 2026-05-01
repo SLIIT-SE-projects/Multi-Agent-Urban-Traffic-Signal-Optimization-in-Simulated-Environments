@@ -1,0 +1,179 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://traffic-platform/contracts/evps_step.schema.json",
+  "title": "EVPS Step Request and Response",
+  "description": "Schemas for the EVPS service /step endpoint. Called by the Simulation Manager every simulation tick.",
+  "$comment": "Schema major version: 1",
+  "$defs": {
+    "Request": {
+      "type": "object",
+      "required": ["step", "session_id"],
+      "additionalProperties": false,
+      "properties": {
+        "step": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "session_id": {
+          "type": "string"
+        },
+        "sim_time": {
+          "type": "number",
+          "minimum": 0
+        },
+        "vehicles": {
+          "type": "array",
+          "description": "All EVs currently in the simulation. Empty array if none.",
+          "items": {"$ref": "#/$defs/Vehicle"}
+        },
+        "tls_states": {
+          "type": "object",
+          "description": "Map of TLS id → current state. Provided to let EVPS know what it's overriding.",
+          "additionalProperties": {"$ref": "#/$defs/TlsState"}
+        }
+      }
+    },
+    "Response": {
+      "type": "object",
+      "required": ["overrides", "broadcasts"],
+      "additionalProperties": false,
+      "properties": {
+        "overrides": {
+          "type": "object",
+          "description": "Map of TLS id → forced phase. Manager applies these AFTER the active model's actions, so EVPS wins conflicts.",
+          "additionalProperties": {"$ref": "#/$defs/Override"}
+        },
+        "broadcasts": {
+          "type": "object",
+          "description": "Map of EV id → status object. Manager forwards each entry over /ws to the driver app.",
+          "additionalProperties": {"$ref": "#/$defs/Broadcast"}
+        },
+        "telemetry": {
+          "type": "object",
+          "description": "Optional EVPS-specific telemetry surfaced on the dashboard",
+          "additionalProperties": true
+        }
+      }
+    },
+    "Vehicle": {
+      "type": "object",
+      "required": ["id", "type", "position", "speed"],
+      "additionalProperties": false,
+      "properties": {
+        "id": {"type": "string"},
+        "type": {
+          "type": "string",
+          "enum": ["ambulance", "fire_truck", "police"]
+        },
+        "priority": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 10,
+          "default": 5,
+          "description": "Higher wins arbitration when two EVs target the same TLS"
+        },
+        "position": {
+          "type": "array",
+          "description": "[x, y] in SUMO Cartesian coordinates",
+          "items": {"type": "number"},
+          "minItems": 2,
+          "maxItems": 2
+        },
+        "speed": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Current speed in m/s"
+        },
+        "current_edge": {"type": "string"},
+        "current_lane": {"type": "string"},
+        "next_junction": {
+          "type": "string",
+          "nullable": true,
+          "description": "TLS ID of the next junction on the route, or null if none"
+        },
+        "distance_to_junction": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Meters along the route to the next junction"
+        },
+        "route_remaining": {
+          "type": "array",
+          "items": {"type": "string"},
+          "description": "Edge IDs remaining in the planned route"
+        }
+      }
+    },
+    "TlsState": {
+      "type": "object",
+      "required": ["phase_index"],
+      "additionalProperties": false,
+      "properties": {
+        "phase_index": {"type": "integer", "minimum": 0},
+        "phase_state": {"type": "string"},
+        "time_to_switch": {"type": "number"}
+      }
+    },
+    "Override": {
+      "type": "object",
+      "required": ["phase_index", "lock_until_step", "ev_id"],
+      "additionalProperties": false,
+      "properties": {
+        "phase_index": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Phase to force on this TLS"
+        },
+        "lock_until_step": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Manager must NOT let the active model overwrite this TLS until this step number is reached. EVPS releases the lock by omitting the TLS from a future /step response, or returning lock_until_step <= current step."
+        },
+        "reason": {
+          "type": "string",
+          "description": "Human-readable explanation surfaced in the dashboard"
+        },
+        "ev_id": {
+          "type": "string",
+          "description": "Which EV won this override"
+        }
+      }
+    },
+    "Broadcast": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "eta_seconds": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Predicted seconds to next junction"
+        },
+        "preempted_lights": {
+          "type": "array",
+          "items": {"type": "string"},
+          "description": "TLS IDs currently preempted on this EV's behalf"
+        },
+        "status": {
+          "type": "string",
+          "enum": ["active", "queued", "completed", "lost"]
+        },
+        "position": {
+          "type": "array",
+          "items": {"type": "number"},
+          "minItems": 2,
+          "maxItems": 2
+        },
+        "speed": {"type": "number"},
+        "route_progress": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1,
+          "description": "Fraction of route completed"
+        }
+      }
+    }
+  },
+  "oneOf": [
+    {"$ref": "#/$defs/Request"},
+    {"$ref": "#/$defs/Response"}
+  ]
+}

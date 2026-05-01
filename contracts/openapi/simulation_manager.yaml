@@ -1,0 +1,500 @@
+openapi: 3.0.3
+info:
+  title: Simulation Manager
+  version: 1.0.0
+  description: |
+    Owns the SUMO process via TraCI. Drives the simulation step loop. Calls
+    out to the active model service and the EVPS service. Arbitrates their
+    outputs into final TraCI commands. Exposes lifecycle, scenario,
+    flow-rate, and topology endpoints to the Sim Control Panel UI.
+
+    This service is the only one in the platform that touches TraCI.
+
+servers:
+  - url: http://localhost:5000
+
+tags:
+  - name: lifecycle
+    description: Start, stop, pause, step
+  - name: auto-step
+    description: Continuous stepping
+  - name: scenario
+    description: Scenario management
+  - name: data
+    description: Live simulation state
+  - name: optimizer
+    description: Model loading and unloading
+  - name: evps
+    description: Emergency vehicle preemption controls
+  - name: flow
+    description: Dynamic vehicle injection
+  - name: state
+    description: Snapshot save/restore
+  - name: baseline
+    description: Headless baseline recording
+
+paths:
+  /api/health:
+    get:
+      tags: [lifecycle]
+      summary: Health probe
+      responses:
+        '200':
+          description: OK
+
+  /api/simulation/start:
+    post:
+      tags: [lifecycle]
+      summary: Start the SUMO simulation
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                suppress_demand:
+                  type: boolean
+                  default: false
+                  description: |
+                    Pass --scale 0 to SUMO so no built-in vehicles are inserted.
+                    Use when flow is driven entirely by the dynamic flow-rate API.
+      responses:
+        '200':
+          description: Started
+        '400':
+          description: Already running or shutting down
+
+  /api/simulation/step:
+    post:
+      tags: [lifecycle]
+      summary: Advance the simulation by one step
+      responses:
+        '200':
+          description: Stepped
+        '400':
+          description: Not running, paused, or auto-stepping
+
+  /api/simulation/pause:
+    post:
+      tags: [lifecycle]
+      summary: Pause the simulation
+      responses:
+        '200':
+          description: OK
+
+  /api/simulation/resume:
+    post:
+      tags: [lifecycle]
+      summary: Resume the simulation
+      responses:
+        '200':
+          description: OK
+
+  /api/simulation/stop:
+    post:
+      tags: [lifecycle]
+      summary: Stop the simulation and release SUMO
+      responses:
+        '200':
+          description: OK
+
+  /api/simulation/auto-step/start:
+    post:
+      tags: [auto-step]
+      summary: Start continuous stepping in a background thread
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                step_delay:
+                  type: number
+                  description: Seconds to sleep between steps (default from config)
+      responses:
+        '200':
+          description: OK
+
+  /api/simulation/auto-step/pause:
+    post:
+      tags: [auto-step]
+      summary: Pause auto-stepping
+      responses:
+        '200':
+          description: OK
+
+  /api/simulation/auto-step/resume:
+    post:
+      tags: [auto-step]
+      summary: Resume auto-stepping
+      responses:
+        '200':
+          description: OK
+
+  /api/simulation/auto-step/stop:
+    post:
+      tags: [auto-step]
+      summary: Stop auto-stepping
+      responses:
+        '200':
+          description: OK
+
+  /api/scenarios:
+    get:
+      tags: [scenario]
+      summary: List available scenarios
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  scenarios:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        name: {type: string}
+                        path: {type: string}
+                        description: {type: string}
+
+  /api/simulation/switch-scenario:
+    post:
+      tags: [scenario]
+      summary: Switch to a different scenario (stops current run)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [scenario_name]
+              properties:
+                scenario_name: {type: string}
+      responses:
+        '200':
+          description: OK
+
+  /api/simulation/reload:
+    post:
+      tags: [scenario]
+      summary: Reload the current scenario from the beginning
+      responses:
+        '200':
+          description: OK
+
+  /api/simulation/current-scenario:
+    get:
+      tags: [scenario]
+      summary: Info about the currently loaded scenario
+      responses:
+        '200':
+          description: OK
+
+  /api/simulation/data:
+    get:
+      tags: [data]
+      summary: Current vehicles, traffic light states, and aggregate stats
+      responses:
+        '200':
+          description: OK
+
+  /api/simulation/status:
+    get:
+      tags: [data]
+      summary: Simulation lifecycle status (polled by UI every 1s)
+      responses:
+        '200':
+          description: OK
+
+  /api/simulation/vehicles:
+    get:
+      tags: [data]
+      summary: Vehicle count and IDs
+      responses:
+        '200':
+          description: OK
+
+  /api/simulation/vehicles/{vehicle_id}:
+    get:
+      tags: [data]
+      summary: Detailed information for a specific vehicle
+      parameters:
+        - name: vehicle_id
+          in: path
+          required: true
+          schema: {type: string}
+      responses:
+        '200':
+          description: OK
+
+  /api/simulation/traffic-lights:
+    get:
+      tags: [data]
+      summary: All traffic light states
+      responses:
+        '200':
+          description: OK
+
+  /api/simulation/topology:
+    get:
+      tags: [data]
+      summary: Network topology for visualization
+      description: |
+        Returns intersections, lanes, edges, adjacency, flow, and membership
+        in the format consumed by the Traffic Dashboard graph view.
+      responses:
+        '200':
+          description: OK
+
+  /api/network/geojson:
+    get:
+      tags: [data]
+      summary: Network as a GeoJSON FeatureCollection
+      responses:
+        '200':
+          description: OK
+
+  /api/optimizer/load:
+    post:
+      tags: [optimizer]
+      summary: Load a model service as the active optimizer
+      description: |
+        After Phase 6 this accepts any registered model name, not only
+        gnn/mpc. The Manager calls /reset on the chosen model and then
+        /predict every decision_interval_steps thereafter.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name:
+                  type: string
+                  description: Registered model name (e.g. gnn, mpc, researcher_x)
+                  example: gnn
+      responses:
+        '200':
+          description: OK
+        '400':
+          description: Unknown model or schema version mismatch
+        '502':
+          description: Model service unreachable or /reset failed
+
+  /api/optimizer/unload:
+    post:
+      tags: [optimizer]
+      summary: Detach the active optimizer (revert to default SUMO control)
+      responses:
+        '200':
+          description: OK
+
+  /api/optimizer/info:
+    get:
+      tags: [optimizer]
+      summary: Metadata of the currently active optimizer
+      responses:
+        '200':
+          description: OK
+
+  /api/optimizer/mpc/internals:
+    get:
+      tags: [optimizer]
+      summary: MPC-specific decision internals (legacy compatibility)
+      description: |
+        Forwarded to the MPC service. Other model services may expose their
+        own internals via /api/optimizer/{name}/internals (post-Phase 6).
+      responses:
+        '200':
+          description: OK
+
+  /api/evps/toggle:
+    post:
+      tags: [evps]
+      summary: Enable or disable EVPS for the current session
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [enable]
+              properties:
+                enable: {type: boolean}
+      responses:
+        '200':
+          description: OK
+
+  /api/evps/spawn_geo:
+    post:
+      tags: [evps]
+      summary: Spawn an EV from latitude/longitude (proxied to EVPS service)
+      responses:
+        '200':
+          description: OK
+
+  /api/evps/spawn_random:
+    post:
+      tags: [evps]
+      summary: Spawn an EV on a random route
+      responses:
+        '200':
+          description: OK
+
+  /api/simulation/routes:
+    get:
+      tags: [flow]
+      summary: List route IDs currently loaded in SUMO
+      responses:
+        '200':
+          description: OK
+
+  /api/simulation/flow-rate:
+    post:
+      tags: [flow]
+      summary: Set vehicle insertion rate for a single route
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [route_id, vehicles_per_hour]
+              properties:
+                route_id: {type: string}
+                vehicles_per_hour: {type: number, minimum: 0}
+      responses:
+        '200':
+          description: OK
+
+  /api/simulation/flow-rate/global:
+    post:
+      tags: [flow]
+      summary: Apply a single insertion rate to every route
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [vehicles_per_hour]
+              properties:
+                vehicles_per_hour: {type: number, minimum: 0}
+      responses:
+        '200':
+          description: OK
+
+  /api/simulation/save-state:
+    post:
+      tags: [state]
+      summary: Save a snapshot of the current simulation state
+      responses:
+        '200':
+          description: OK
+
+  /api/simulation/states:
+    get:
+      tags: [state]
+      summary: List saved states
+      responses:
+        '200':
+          description: OK
+    delete:
+      tags: [state]
+      summary: Delete all saved states
+      responses:
+        '200':
+          description: OK
+
+  /api/simulation/states/{state_id}:
+    get:
+      tags: [state]
+      summary: Get details about a saved state
+      parameters:
+        - name: state_id
+          in: path
+          required: true
+          schema: {type: string}
+      responses:
+        '200':
+          description: OK
+    delete:
+      tags: [state]
+      summary: Delete a saved state
+      parameters:
+        - name: state_id
+          in: path
+          required: true
+          schema: {type: string}
+      responses:
+        '200':
+          description: OK
+
+  /api/simulation/restore-state/{state_id}:
+    post:
+      tags: [state]
+      summary: Restore a saved state
+      parameters:
+        - name: state_id
+          in: path
+          required: true
+          schema: {type: string}
+      responses:
+        '200':
+          description: OK
+
+  /api/mpc/baseline:
+    get:
+      tags: [baseline]
+      summary: Get saved baseline metrics
+      responses:
+        '200':
+          description: OK
+        '404':
+          description: No baseline recorded
+    post:
+      tags: [baseline]
+      summary: Save current run metrics as the baseline
+      responses:
+        '200':
+          description: OK
+
+  /api/mpc/baseline/record:
+    post:
+      tags: [baseline]
+      summary: Run a headless baseline recording
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                scenario: {type: string}
+                flow_rate: {type: number}
+                steps: {type: integer, default: 500}
+      responses:
+        '200':
+          description: Recording started
+
+  /api/mpc/baseline/record/status:
+    get:
+      tags: [baseline]
+      summary: Poll progress of an ongoing baseline recording
+      responses:
+        '200':
+          description: OK
+
+  /ws/simulation:
+    get:
+      summary: SocketIO endpoint for live simulation_step events
+      description: |
+        Pushes per-step JSON containing lanes, intersections, global
+        metrics, and optimizer telemetry. Subscribed to by the Sim Control
+        Panel UI and the Dashboard API gateway.
+      responses:
+        '101':
+          description: Switching protocols

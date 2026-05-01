@@ -1,0 +1,369 @@
+openapi: 3.0.3
+info:
+  title: Emergency Vehicle Preemption Service
+  version: 1.0.0
+  description: |
+    Service that detects emergency vehicles in the simulation and emits
+    traffic-light overrides to grant them priority. Runs on every simulation
+    step (not on a decision interval like the model services), and uses
+    pre-trained ETA prediction + safety classification models.
+
+    Operates in parallel to the active control model. The Simulation Manager
+    arbitrates: model actions are applied first, EVPS overrides win on
+    conflict.
+
+    Also exposes a WebSocket endpoint for the Flutter Driver App.
+
+servers:
+  - url: http://localhost:8004
+
+tags:
+  - name: meta
+    description: Metadata and health
+  - name: lifecycle
+    description: Session management
+  - name: step
+    description: Per-step execution
+  - name: fleet
+    description: EV management
+
+paths:
+  /info:
+    get:
+      tags: [meta]
+      summary: Service metadata
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [name, version]
+                properties:
+                  name: {type: string, example: evps}
+                  version: {type: string, example: 1.0.0}
+                  step_schema_version: {type: string, example: '1'}
+                  models_loaded:
+                    type: object
+                    properties:
+                      eta_predictor: {type: boolean}
+                      safety_classifier: {type: boolean}
+
+  /health:
+    get:
+      tags: [meta]
+      summary: Liveness probe
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: {type: string, enum: [ok, degraded, not_ready]}
+                  active: {type: boolean, description: Toggled on/off via /toggle}
+                  fleet_size: {type: integer}
+
+  /reset:
+    post:
+      tags: [lifecycle]
+      summary: Initialize a new simulation session
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [session_id, scenario, network]
+              properties:
+                session_id: {type: string}
+                scenario: {type: string}
+                network:
+                  $ref: '#/components/schemas/NetworkRef'
+      responses:
+        '200':
+          description: Session ready
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: {type: string, enum: [ready]}
+
+  /toggle:
+    post:
+      tags: [lifecycle]
+      summary: Enable or disable EVPS for the current session
+      description: |
+        When disabled, /step returns empty overrides and stops broadcasting
+        to the driver app. When re-enabled, internal fleet state is cleared.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [enable]
+              properties:
+                enable: {type: boolean}
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: {type: string, enum: [success]}
+                  active: {type: boolean}
+
+  /step:
+    post:
+      tags: [step]
+      summary: Process one simulation step
+      description: |
+        Called by the Simulation Manager every simulation tick. The Manager
+        sends the position, speed, and route of every EV in the simulation,
+        plus the current state of every traffic light. EVPS returns:
+        - overrides: tls_id → forced phase (winners only)
+        - broadcasts: ev_id → status object (relayed to driver app)
+      operationId: step
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StepRequest'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StepResponse'
+        '503':
+          description: Not ready (call /reset first)
+
+  /spawn_geo:
+    post:
+      tags: [fleet]
+      summary: Spawn an EV from geographic coordinates
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [start_lat, start_lon, end_lat, end_lon]
+              properties:
+                start_lat: {type: number}
+                start_lon: {type: number}
+                end_lat: {type: number}
+                end_lon: {type: number}
+                ev_id:
+                  type: string
+                  description: Optional EV ID; auto-generated if omitted
+                vehicle_type:
+                  type: string
+                  enum: [ambulance, fire_truck, police]
+                  default: ambulance
+                priority:
+                  type: integer
+                  minimum: 0
+                  maximum: 10
+                  default: 5
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SpawnResponse'
+        '400':
+          description: Invalid coordinates or no route found
+
+  /spawn_random:
+    post:
+      tags: [fleet]
+      summary: Spawn an EV with a random route
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                ev_id: {type: string}
+                vehicle_type:
+                  type: string
+                  enum: [ambulance, fire_truck, police]
+                  default: ambulance
+                priority: {type: integer, default: 5}
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SpawnResponse'
+
+  /fleet:
+    get:
+      tags: [fleet]
+      summary: List active EVs and their current state
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  fleet:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Vehicle'
+
+  /priority:
+    post:
+      tags: [fleet]
+      summary: Change priority of an active EV
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [ev_id, priority]
+              properties:
+                ev_id: {type: string}
+                priority: {type: integer, minimum: 0, maximum: 10}
+      responses:
+        '200':
+          description: OK
+
+  /ws:
+    get:
+      tags: [step]
+      summary: WebSocket endpoint for Flutter Driver App
+      description: |
+        Upgrade to WebSocket. The driver app sends:
+        - {"type": "switch_ev", "ev_id": "EV_0"}
+        - {"type": "set_priority", "ev_id": "EV_0", "priority": 8}
+
+        The server pushes per-step status frames whenever EVPS is active:
+        - {"type": "status", "active": bool, "ev": {...}, "preempted_lights": [...]}
+
+        Multiple driver-app clients may connect simultaneously.
+      responses:
+        '101':
+          description: Switching protocols to WebSocket
+
+components:
+  schemas:
+
+    NetworkRef:
+      type: object
+      description: Same network topology shape as model service /reset
+      required: [intersections, lanes]
+
+    StepRequest:
+      type: object
+      required: [step, session_id]
+      properties:
+        step: {type: integer, minimum: 0}
+        session_id: {type: string}
+        vehicles:
+          type: array
+          description: All EVs currently in the simulation
+          items:
+            $ref: '#/components/schemas/Vehicle'
+        tls_states:
+          type: object
+          description: Map of tls_id → current state
+          additionalProperties:
+            type: object
+            properties:
+              phase_index: {type: integer}
+              phase_state: {type: string}
+              time_to_switch: {type: number}
+
+    StepResponse:
+      type: object
+      required: [overrides, broadcasts]
+      properties:
+        overrides:
+          type: object
+          description: Map of tls_id → override directive
+          additionalProperties:
+            $ref: '#/components/schemas/Override'
+        broadcasts:
+          type: object
+          description: Map of ev_id → status object (relayed via /ws)
+          additionalProperties:
+            $ref: '#/components/schemas/Broadcast'
+
+    Vehicle:
+      type: object
+      required: [id, type, position, speed]
+      properties:
+        id: {type: string, example: EV_0}
+        type:
+          type: string
+          enum: [ambulance, fire_truck, police]
+        priority: {type: integer, minimum: 0, maximum: 10}
+        position:
+          type: array
+          items: {type: number}
+          minItems: 2
+          maxItems: 2
+          description: '[x, y] in SUMO coordinates'
+        speed: {type: number, minimum: 0}
+        current_edge: {type: string}
+        current_lane: {type: string}
+        next_junction:
+          type: string
+          nullable: true
+        distance_to_junction: {type: number, minimum: 0}
+        route_remaining:
+          type: array
+          items: {type: string}
+
+    Override:
+      type: object
+      required: [phase_index, lock_until_step, reason, ev_id]
+      properties:
+        phase_index: {type: integer, minimum: 0}
+        lock_until_step:
+          type: integer
+          description: |
+            EVPS owns this TLS until this step number. Manager must not let
+            the model overwrite the phase until then.
+        reason: {type: string, example: 'EV_0 approaching, ETA 12s'}
+        ev_id: {type: string}
+
+    Broadcast:
+      type: object
+      properties:
+        eta_seconds: {type: number, minimum: 0}
+        preempted_lights:
+          type: array
+          items: {type: string}
+        status:
+          type: string
+          enum: [active, completed, queued]
+        position:
+          type: array
+          items: {type: number}
+        speed: {type: number}
+
+    SpawnResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [success, error]
+        ev_id: {type: string}
+        route: {type: array, items: {type: string}}
+        message: {type: string}

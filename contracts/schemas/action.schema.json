@@ -1,0 +1,124 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://traffic-platform/contracts/action.schema.json",
+  "title": "Model Action Response",
+  "description": "Per-step decisions returned by a model service to the Simulation Manager. Returned by /predict.",
+  "$comment": "Schema major version: 1",
+  "type": "object",
+  "required": ["session_id", "step", "actions"],
+  "additionalProperties": false,
+  "properties": {
+    "session_id": {
+      "type": "string",
+      "description": "Must echo the session_id from the request"
+    },
+    "step": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Must echo the step from the request"
+    },
+    "actions": {
+      "type": "object",
+      "description": "Map of TLS id → action. May be a subset of all TLS — Manager applies default control to omitted ones.",
+      "additionalProperties": {
+        "$ref": "#/$defs/Action"
+      }
+    },
+    "telemetry": {
+      "$ref": "#/$defs/Telemetry"
+    }
+  },
+  "$defs": {
+    "Action": {
+      "oneOf": [
+        {"$ref": "#/$defs/BinarySwitch"},
+        {"$ref": "#/$defs/SetPhase"},
+        {"$ref": "#/$defs/SetDuration"}
+      ]
+    },
+    "BinarySwitch": {
+      "type": "object",
+      "title": "Binary Switch Action",
+      "description": "Keep current phase or advance to next green. Used by GNN. Manager auto-handles yellow transition.",
+      "required": ["type", "value"],
+      "additionalProperties": false,
+      "properties": {
+        "type": {"const": "binary_switch"},
+        "value": {
+          "type": "integer",
+          "enum": [0, 1],
+          "description": "0 = keep current phase, 1 = advance to next green"
+        }
+      }
+    },
+    "SetPhase": {
+      "type": "object",
+      "title": "Set Phase Action",
+      "description": "Set TLS to a specific phase index. Used by MPC. Manager auto-handles yellow transition if needed.",
+      "required": ["type", "value"],
+      "additionalProperties": false,
+      "properties": {
+        "type": {"const": "set_phase"},
+        "value": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Target phase index in this TLS's program"
+        }
+      }
+    },
+    "SetDuration": {
+      "type": "object",
+      "title": "Set Duration Action",
+      "description": "Set a phase to run for a specific duration in seconds. Used by cycle-based controllers.",
+      "required": ["type", "phase", "duration"],
+      "additionalProperties": false,
+      "properties": {
+        "type": {"const": "set_duration"},
+        "phase": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Phase index whose duration is being set"
+        },
+        "duration": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Duration in seconds"
+        }
+      }
+    },
+    "Telemetry": {
+      "type": "object",
+      "description": "Optional model-emitted telemetry. Forwarded to the Dashboard verbatim.",
+      "additionalProperties": false,
+      "properties": {
+        "inference_time_ms": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Wall-clock time spent computing the response"
+        },
+        "per_node_latency_ms": {
+          "type": "object",
+          "description": "Per-TLS inference latency",
+          "additionalProperties": {"type": "number"}
+        },
+        "per_node_uncertainty": {
+          "type": "object",
+          "description": "Per-TLS uncertainty (e.g. MC Dropout variance)",
+          "additionalProperties": {"type": "number"}
+        },
+        "layer_activations": {
+          "type": "object",
+          "description": "Per-layer per-node mean activation magnitudes (visualization aid)",
+          "additionalProperties": {
+            "type": "object",
+            "additionalProperties": {"type": "number"}
+          }
+        },
+        "model_specific": {
+          "type": "object",
+          "description": "Free-form payload for any extra data a model wants to surface to the Dashboard"
+        }
+      }
+    }
+  }
+}

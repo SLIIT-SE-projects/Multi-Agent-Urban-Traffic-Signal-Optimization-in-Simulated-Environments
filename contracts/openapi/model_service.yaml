@@ -1,0 +1,419 @@
+openapi: 3.0.3
+info:
+  title: Traffic Signal Model Service
+  version: 1.0.0
+  description: |
+    Standard contract every traffic-signal control model must implement.
+
+    Implementers: GNN service (internal), MPC service (internal), and any
+    external researcher model.
+
+    Consumer: Simulation Manager.
+
+    The contract is intentionally minimal: four endpoints, three action
+    shapes, no SUMO knowledge required. See
+    `contracts/researcher_onboarding.md` for an integration walkthrough.
+
+servers:
+  - url: http://localhost:8002
+    description: Example local model service (port varies per implementation)
+
+tags:
+  - name: meta
+    description: Metadata and health
+  - name: lifecycle
+    description: Session management
+  - name: inference
+    description: Per-step decisions
+
+paths:
+  /info:
+    get:
+      tags: [meta]
+      summary: Model metadata and capabilities
+      description: |
+        Called by Simulation Manager during registration to determine which
+        action types this model emits, how often it should be called, and
+        which schema versions it speaks.
+      operationId: getInfo
+      responses:
+        '200':
+          description: Model metadata
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ModelInfo'
+
+  /health:
+    get:
+      tags: [meta]
+      summary: Liveness and readiness probe
+      description: |
+        Called periodically by the Manager and by orchestration platforms
+        (Docker, Kubernetes). Should return quickly (<100ms).
+      operationId: getHealth
+      responses:
+        '200':
+          description: Service is responsive
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Health'
+        '503':
+          description: Service is alive but not ready (e.g. weights still loading)
+
+  /reset:
+    post:
+      tags: [lifecycle]
+      summary: Initialize a new simulation session
+      description: |
+        Called once when the simulation starts and again on every scenario
+        switch. The full network topology is provided so the model can build
+        any internal data structures (graphs, distance matrices, etc.) ahead
+        of inference.
+
+        The model MUST clear any state from previous sessions when /reset
+        is called.
+      operationId: resetSession
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ResetRequest'
+      responses:
+        '200':
+          description: Session ready for /predict calls
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResetResponse'
+        '400':
+          description: Invalid network or config
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /predict:
+    post:
+      tags: [inference]
+      summary: Compute control actions for a snapshot
+      description: |
+        Called every `decision_interval_steps` simulation ticks (declared
+        by the model in /info). The model receives the current state of
+        every traffic light and lane and returns actions for the
+        intersections it wants to control.
+
+        A model MAY return actions for a subset of intersections; the
+        Manager will apply default control to the rest.
+
+        Total response time must stay under `max_inference_ms` declared
+        in /info, or the Manager will fall back to the previous action.
+      operationId: predict
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PredictRequest'
+      responses:
+        '200':
+          description: Actions and optional telemetry
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PredictResponse'
+        '408':
+          description: Inference exceeded max_inference_ms
+        '422':
+          description: Snapshot schema validation failed
+        '503':
+          description: Session not initialized — caller must POST /reset first
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+components:
+  schemas:
+
+    ModelInfo:
+      description: |
+        Static metadata describing a model. The full canonical schema lives
+        in `contracts/schemas/model_info.schema.json`.
+      type: object
+      required:
+        - name
+        - version
+        - snapshot_schema_version
+        - action_schema_version
+        - decision_interval_steps
+        - action_types_supported
+      properties:
+        name:
+          type: string
+          description: Stable identifier for the model
+          example: gnn_marl
+        version:
+          type: string
+          description: Semantic version of the model implementation
+          example: 1.0.0
+        snapshot_schema_version:
+          type: string
+          description: Major version of the snapshot schema this model accepts
+          example: '1'
+        action_schema_version:
+          type: string
+          description: Major version of the action schema this model emits
+          example: '1'
+        decision_interval_steps:
+          type: integer
+          minimum: 1
+          description: How many simulation steps between /predict calls
+          example: 15
+        action_types_supported:
+          type: array
+          minItems: 1
+          items:
+            type: string
+            enum: [binary_switch, set_phase, set_duration]
+          example: [binary_switch]
+        supports_warm_start:
+          type: boolean
+          default: false
+          description: |
+            If true, /predict can be called immediately after /reset.
+            If false, the Manager applies default control for the first
+            `warmup_steps` (returned from /reset) before calling /predict.
+        max_inference_ms:
+          type: integer
+          minimum: 1
+          description: Maximum acceptable wall-clock time per /predict call
+          example: 500
+        description:
+          type: string
+        author:
+          type: string
+        license:
+          type: string
+
+    Health:
+      type: object
+      required: [status, model_loaded]
+      properties:
+        status:
+          type: string
+          enum: [ok, degraded, not_ready]
+        model_loaded:
+          type: boolean
+          description: True if model weights/state are loaded into memory
+        session_id:
+          type: string
+          nullable: true
+          description: Current session, or null if no /reset has occurred
+        uptime_seconds:
+          type: number
+
+    ResetRequest:
+      type: object
+      required: [session_id, scenario, network]
+      properties:
+        session_id:
+          type: string
+          description: Unique identifier for this simulation session
+        scenario:
+          type: string
+          description: Scenario name (e.g. grid3x3, katunayake)
+          example: grid3x3
+        network:
+          $ref: '#/components/schemas/NetworkRef'
+        config:
+          type: object
+          description: Manager-side configuration the model may need to know
+          properties:
+            yellow_duration: {type: number, default: 3}
+            min_green: {type: number, default: 5}
+            max_green: {type: number, default: 60}
+            step_length: {type: number, default: 1.0}
+
+    ResetResponse:
+      type: object
+      required: [status, session_id]
+      properties:
+        status:
+          type: string
+          enum: [ready]
+        session_id:
+          type: string
+        warmup_steps:
+          type: integer
+          minimum: 0
+          default: 0
+          description: Steps before /predict produces useful actions
+
+    NetworkRef:
+      description: |
+        Full network topology. Canonical schema in
+        `contracts/schemas/network.schema.json`.
+      type: object
+      required: [intersections, lanes]
+      properties:
+        scenario_name: {type: string}
+        intersections:
+          type: array
+          items: {type: object}
+        lanes:
+          type: array
+          items: {type: object}
+        edges:
+          type: array
+          items: {type: object}
+        connections:
+          type: array
+          items: {type: object}
+
+    PredictRequest:
+      description: |
+        Per-step traffic snapshot. Canonical schema in
+        `contracts/schemas/snapshot.schema.json`.
+      type: object
+      required: [session_id, step, snapshot]
+      properties:
+        session_id: {type: string}
+        step:
+          type: integer
+          minimum: 0
+        snapshot:
+          type: object
+          required: [intersections, lanes]
+          properties:
+            intersections:
+              type: object
+              description: Map of tls_id → IntersectionState
+              additionalProperties:
+                $ref: '#/components/schemas/IntersectionState'
+            lanes:
+              type: object
+              description: Map of lane_id → LaneState
+              additionalProperties:
+                $ref: '#/components/schemas/LaneState'
+
+    IntersectionState:
+      type: object
+      required: [phase_index, time_to_switch]
+      properties:
+        phase_index:
+          type: integer
+          minimum: 0
+        phase_state:
+          type: string
+          description: SUMO phase state string (e.g. "GGrrGGrr")
+        time_in_phase:
+          type: number
+          minimum: 0
+        time_to_switch:
+          type: number
+          description: Seconds until next scheduled switch (negative if past)
+        program_id:
+          type: string
+
+    LaneState:
+      type: object
+      properties:
+        queue_length: {type: integer, minimum: 0}
+        vehicle_count: {type: integer, minimum: 0}
+        occupancy: {type: number, minimum: 0, maximum: 1}
+        avg_speed: {type: number, minimum: 0}
+        waiting_time: {type: number, minimum: 0}
+        co2: {type: number, minimum: 0}
+        halting_number: {type: integer, minimum: 0}
+
+    PredictResponse:
+      description: |
+        Actions and telemetry. Canonical schema in
+        `contracts/schemas/action.schema.json`.
+      type: object
+      required: [session_id, step, actions]
+      properties:
+        session_id: {type: string}
+        step: {type: integer}
+        actions:
+          type: object
+          description: Map of tls_id → Action
+          additionalProperties:
+            $ref: '#/components/schemas/Action'
+        telemetry:
+          $ref: '#/components/schemas/Telemetry'
+
+    Action:
+      oneOf:
+        - $ref: '#/components/schemas/BinarySwitchAction'
+        - $ref: '#/components/schemas/SetPhaseAction'
+        - $ref: '#/components/schemas/SetDurationAction'
+      discriminator:
+        propertyName: type
+        mapping:
+          binary_switch: '#/components/schemas/BinarySwitchAction'
+          set_phase: '#/components/schemas/SetPhaseAction'
+          set_duration: '#/components/schemas/SetDurationAction'
+
+    BinarySwitchAction:
+      type: object
+      required: [type, value]
+      properties:
+        type: {type: string, enum: [binary_switch]}
+        value:
+          type: integer
+          enum: [0, 1]
+          description: 0=keep current phase, 1=advance to next green phase
+
+    SetPhaseAction:
+      type: object
+      required: [type, value]
+      properties:
+        type: {type: string, enum: [set_phase]}
+        value:
+          type: integer
+          minimum: 0
+          description: Target phase index in this TLS's program
+
+    SetDurationAction:
+      type: object
+      required: [type, phase, duration]
+      properties:
+        type: {type: string, enum: [set_duration]}
+        phase: {type: integer, minimum: 0}
+        duration:
+          type: number
+          minimum: 0
+          description: Green duration in seconds
+
+    Telemetry:
+      type: object
+      description: |
+        Optional model-emitted telemetry. The Dashboard surfaces these
+        fields without inspecting their semantic meaning.
+      properties:
+        inference_time_ms: {type: number, minimum: 0}
+        per_node_latency_ms:
+          type: object
+          additionalProperties: {type: number}
+        per_node_uncertainty:
+          type: object
+          additionalProperties: {type: number}
+        layer_activations:
+          type: object
+          additionalProperties:
+            type: object
+        model_specific:
+          type: object
+          description: Free-form dict for any extra fields the model wants to surface
+
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error: {type: string}
+        detail: {type: string}
+        code: {type: string}

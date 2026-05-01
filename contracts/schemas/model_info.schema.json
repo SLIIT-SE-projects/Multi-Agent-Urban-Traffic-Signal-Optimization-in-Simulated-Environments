@@ -1,0 +1,90 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://traffic-platform/contracts/model_info.schema.json",
+  "title": "Model Service Metadata",
+  "description": "Static description of a model service. Returned by GET /info on every model service.",
+  "$comment": "Schema major version: 1",
+  "type": "object",
+  "required": [
+    "name",
+    "version",
+    "snapshot_schema_version",
+    "action_schema_version",
+    "decision_interval_steps",
+    "action_types_supported"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "name": {
+      "type": "string",
+      "pattern": "^[a-z0-9_-]+$",
+      "minLength": 1,
+      "maxLength": 64,
+      "description": "Stable kebab/snake-case identifier. Used as the registration key."
+    },
+    "version": {
+      "type": "string",
+      "description": "Semantic version of the model implementation",
+      "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+(-[a-zA-Z0-9.-]+)?$"
+    },
+    "snapshot_schema_version": {
+      "type": "string",
+      "description": "Major version of the snapshot schema this model accepts (e.g. '1')",
+      "pattern": "^[0-9]+$"
+    },
+    "action_schema_version": {
+      "type": "string",
+      "description": "Major version of the action schema this model emits (e.g. '1')",
+      "pattern": "^[0-9]+$"
+    },
+    "decision_interval_steps": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Number of simulation steps between /predict calls. Manager applies default control between calls."
+    },
+    "action_types_supported": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "enum": ["binary_switch", "set_phase", "set_duration"]
+      }
+    },
+    "supports_warm_start": {
+      "type": "boolean",
+      "default": false,
+      "description": "If true, /predict produces useful actions immediately after /reset. If false, Manager applies default control during the warmup_steps window returned from /reset."
+    },
+    "max_inference_ms": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Maximum acceptable wall-clock time per /predict call. Manager uses this as the request timeout."
+    },
+    "needs_vehicle_data": {
+      "type": "boolean",
+      "default": false,
+      "description": "If true, Manager includes per-vehicle data in the snapshot (more bandwidth)."
+    },
+    "description": {
+      "type": "string",
+      "maxLength": 500
+    },
+    "author": {
+      "type": "string"
+    },
+    "license": {
+      "type": "string",
+      "description": "SPDX identifier preferred (e.g. 'MIT', 'Apache-2.0')"
+    },
+    "homepage": {
+      "type": "string",
+      "format": "uri"
+    },
+    "tags": {
+      "type": "array",
+      "items": {"type": "string"},
+      "description": "Free-form tags surfaced in the dashboard model picker (e.g. ['gnn', 'marl', 'attention'])"
+    }
+  }
+}

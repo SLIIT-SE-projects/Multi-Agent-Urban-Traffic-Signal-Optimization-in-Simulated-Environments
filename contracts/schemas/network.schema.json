@@ -1,0 +1,183 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://traffic-platform/contracts/network.schema.json",
+  "title": "Network Topology",
+  "description": "Static network topology sent from Simulation Manager to a model service in the /reset payload. Captures everything a model could need to build internal data structures (graphs, distance matrices, etc.) without TraCI access.",
+  "$comment": "Schema major version: 1",
+  "type": "object",
+  "required": ["intersections", "lanes"],
+  "additionalProperties": false,
+  "properties": {
+    "scenario_name": {
+      "type": "string",
+      "description": "Human-readable scenario identifier (e.g. 'grid3x3')"
+    },
+    "scenario_hash": {
+      "type": "string",
+      "description": "Hash of the .net.xml file content. Models may cache by hash to skip re-initialization on identical resets."
+    },
+    "intersections": {
+      "type": "array",
+      "description": "All traffic-light-controlled intersections",
+      "items": {"$ref": "#/$defs/Intersection"}
+    },
+    "lanes": {
+      "type": "array",
+      "description": "All non-internal lanes",
+      "items": {"$ref": "#/$defs/Lane"}
+    },
+    "edges": {
+      "type": "array",
+      "description": "All non-internal edges",
+      "items": {"$ref": "#/$defs/Edge"}
+    },
+    "connections": {
+      "type": "array",
+      "description": "Lane-to-lane connections through junctions",
+      "items": {"$ref": "#/$defs/Connection"}
+    }
+  },
+  "$defs": {
+    "Intersection": {
+      "type": "object",
+      "required": ["id", "phases"],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "TLS ID (matches keys in snapshot.intersections)"
+        },
+        "x": {"type": "number"},
+        "y": {"type": "number"},
+        "incoming_lanes": {
+          "type": "array",
+          "items": {"type": "string"}
+        },
+        "outgoing_lanes": {
+          "type": "array",
+          "items": {"type": "string"}
+        },
+        "controlled_lanes": {
+          "type": "array",
+          "items": {"type": "string"},
+          "description": "Lanes whose entry signal this TLS controls"
+        },
+        "phases": {
+          "type": "array",
+          "description": "Phases in this TLS's primary program, in order",
+          "items": {"$ref": "#/$defs/Phase"}
+        },
+        "program_id": {"type": "string", "default": "0"}
+      }
+    },
+    "Phase": {
+      "type": "object",
+      "required": ["index", "state"],
+      "additionalProperties": false,
+      "properties": {
+        "index": {"type": "integer", "minimum": 0},
+        "state": {
+          "type": "string",
+          "description": "SUMO phase state string (e.g. 'GGrrGGrr')"
+        },
+        "duration_default": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Default duration in seconds when SUMO runs the program without external control"
+        },
+        "min_duration": {"type": "number", "minimum": 0},
+        "max_duration": {"type": "number", "minimum": 0},
+        "is_green": {
+          "type": "boolean",
+          "description": "True if state contains any 'g' or 'G' and no 'y' or 'u'"
+        },
+        "is_yellow": {
+          "type": "boolean",
+          "description": "True if state contains 'y'"
+        }
+      }
+    },
+    "Lane": {
+      "type": "object",
+      "required": ["id", "edge_id", "length", "speed_limit"],
+      "additionalProperties": false,
+      "properties": {
+        "id": {"type": "string"},
+        "edge_id": {
+          "type": "string",
+          "description": "Parent edge"
+        },
+        "index": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Lane index within parent edge"
+        },
+        "length": {"type": "number", "minimum": 0},
+        "speed_limit": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Free-flow speed in m/s"
+        },
+        "shape": {
+          "type": "array",
+          "description": "Polyline as [[x, y], ...]. Optional but useful for spatial models.",
+          "items": {
+            "type": "array",
+            "items": {"type": "number"},
+            "minItems": 2,
+            "maxItems": 2
+          }
+        },
+        "from_node": {"type": "string"},
+        "to_node": {"type": "string"},
+        "allowed_vehicle_classes": {
+          "type": "array",
+          "items": {"type": "string"}
+        }
+      }
+    },
+    "Edge": {
+      "type": "object",
+      "required": ["id", "from", "to"],
+      "additionalProperties": false,
+      "properties": {
+        "id": {"type": "string"},
+        "from": {"type": "string", "description": "Source junction ID"},
+        "to": {"type": "string", "description": "Target junction ID"},
+        "lanes": {
+          "type": "array",
+          "items": {"type": "string"}
+        },
+        "priority": {"type": "integer"},
+        "function": {
+          "type": "string",
+          "enum": ["normal", "internal", "connector", "crossing", "walkingarea"]
+        }
+      }
+    },
+    "Connection": {
+      "type": "object",
+      "required": ["from_lane", "to_lane"],
+      "additionalProperties": false,
+      "properties": {
+        "from_lane": {"type": "string"},
+        "to_lane": {"type": "string"},
+        "via_tls": {
+          "type": "string",
+          "nullable": true,
+          "description": "TLS ID controlling this connection, or null if uncontrolled"
+        },
+        "tls_link_index": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Index into the TLS phase state string"
+        },
+        "direction": {
+          "type": "string",
+          "enum": ["s", "l", "r", "t", "L", "R", "invalid"],
+          "description": "SUMO turning direction code"
+        }
+      }
+    }
+  }
+}

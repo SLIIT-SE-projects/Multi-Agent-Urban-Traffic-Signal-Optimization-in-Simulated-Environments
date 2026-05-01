@@ -1,0 +1,158 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://traffic-platform/contracts/snapshot.schema.json",
+  "title": "Traffic Snapshot",
+  "description": "Per-step state of every traffic light and lane in the simulation. Sent from Simulation Manager to model services on every /predict call.",
+  "$comment": "Schema major version: 1",
+  "type": "object",
+  "required": ["session_id", "step", "snapshot"],
+  "additionalProperties": false,
+  "properties": {
+    "session_id": {
+      "type": "string",
+      "description": "Unique identifier for the active simulation session, set on /reset",
+      "minLength": 1
+    },
+    "step": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Simulation step counter (0 at start of session)"
+    },
+    "timestamp_ms": {
+      "type": "integer",
+      "description": "Wall-clock time when the Manager captured this snapshot"
+    },
+    "sim_time": {
+      "type": "number",
+      "minimum": 0,
+      "description": "SUMO simulation time in seconds"
+    },
+    "snapshot": {
+      "type": "object",
+      "required": ["intersections", "lanes"],
+      "additionalProperties": false,
+      "properties": {
+        "intersections": {
+          "type": "object",
+          "description": "Map of TLS id → intersection state",
+          "additionalProperties": {
+            "$ref": "#/$defs/IntersectionState"
+          }
+        },
+        "lanes": {
+          "type": "object",
+          "description": "Map of lane id → lane state",
+          "additionalProperties": {
+            "$ref": "#/$defs/LaneState"
+          }
+        },
+        "vehicles": {
+          "type": "object",
+          "description": "Optional. Models that need per-vehicle data may opt in via /info; Manager only sends this if the active model declared it.",
+          "additionalProperties": {
+            "$ref": "#/$defs/VehicleSummary"
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "IntersectionState": {
+      "type": "object",
+      "required": ["phase_index", "time_to_switch"],
+      "additionalProperties": false,
+      "properties": {
+        "phase_index": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Index into this TLS's program phases"
+        },
+        "phase_state": {
+          "type": "string",
+          "description": "SUMO phase string (e.g. 'GGrrGGrr'). Lowercase 'g' = priority green, 'G' = green, 'r' = red, 'y' = yellow, 'u' = red-yellow.",
+          "pattern": "^[gGrRyYuUosO]+$"
+        },
+        "time_in_phase": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Seconds spent in the current phase"
+        },
+        "time_to_switch": {
+          "type": "number",
+          "description": "Seconds until next scheduled switch. Negative if past scheduled switch time."
+        },
+        "program_id": {
+          "type": "string",
+          "description": "Active program ID (e.g. '0')"
+        },
+        "controlled_lanes": {
+          "type": "array",
+          "items": {"type": "string"},
+          "description": "Lane IDs controlled by this TLS"
+        }
+      }
+    },
+    "LaneState": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "queue_length": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Halting vehicle count (speed below 0.1 m/s) — getLastStepHaltingNumber"
+        },
+        "vehicle_count": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "getLastStepVehicleNumber"
+        },
+        "occupancy": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1,
+          "description": "Fraction of lane length covered by vehicles"
+        },
+        "avg_speed": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Mean speed in m/s. NOTE: SUMO returns the lane speed limit when the lane is empty — consumers must filter by vehicle_count > 0 before averaging."
+        },
+        "waiting_time": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Cumulative waiting time in seconds"
+        },
+        "co2": {
+          "type": "number",
+          "minimum": 0,
+          "description": "CO2 emission since last step (mg)"
+        },
+        "halting_number": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Alias for queue_length, kept for backwards compatibility"
+        }
+      }
+    },
+    "VehicleSummary": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "id": {"type": "string"},
+        "type": {"type": "string"},
+        "position": {
+          "type": "array",
+          "items": {"type": "number"},
+          "minItems": 2,
+          "maxItems": 2
+        },
+        "speed": {"type": "number", "minimum": 0},
+        "current_lane": {"type": "string"},
+        "route": {
+          "type": "array",
+          "items": {"type": "string"}
+        }
+      }
+    }
+  }
+}

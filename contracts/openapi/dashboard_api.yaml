@@ -1,0 +1,210 @@
+openapi: 3.0.3
+info:
+  title: Dashboard API Gateway
+  version: 1.0.0
+  description: |
+    Browser-facing gateway. Owns concerns the internal services should not
+    care about: CORS, auth, rate limiting, model registration, telemetry
+    relay over WebSocket.
+
+    Uses Redis pub/sub to receive metrics from internal services.
+
+servers:
+  - url: http://localhost:8000
+
+tags:
+  - name: control
+    description: High-level control commands
+  - name: models
+    description: Model registry (Phase 6)
+  - name: telemetry
+    description: Live data relay
+  - name: topology
+    description: Network topology proxy
+
+paths:
+  /api/health:
+    get:
+      summary: Health probe
+      responses:
+        '200':
+          description: OK
+
+  /api/control:
+    post:
+      tags: [control]
+      summary: Forward a control command to a model service via Redis
+      description: |
+        The Dashboard API publishes the command on the
+        `control_<model>` Redis channel. The corresponding model service
+        subscribes to that channel and acts on the message.
+
+        Used for high-level commands like start/stop. Per-step prediction
+        does NOT go through this endpoint — that's a direct HTTP call from
+        the Simulation Manager.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [action, model]
+              properties:
+                action:
+                  type: string
+                  example: start
+                model:
+                  type: string
+                  description: Registered model name
+                  example: gnn
+      responses:
+        '200':
+          description: Command published
+
+  /api/models:
+    get:
+      tags: [models]
+      summary: List registered model services
+      description: Available from Phase 6.
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  models:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/RegisteredModel'
+
+  /api/models/register:
+    post:
+      tags: [models]
+      summary: Register a new model service
+      description: |
+        Available from Phase 6. The Dashboard API verifies the URL responds
+        to /info and /health, validates the schema versions, and stores the
+        registration.
+
+        For external researchers, the URL must be reachable by the
+        Simulation Manager (which runs in Docker — use host.docker.internal
+        or a publicly routable hostname).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, url]
+              properties:
+                name:
+                  type: string
+                  pattern: '^[a-z0-9_-]+$'
+                url:
+                  type: string
+                  format: uri
+                auth_token:
+                  type: string
+                  description: Optional bearer token included in calls to this model
+                description:
+                  type: string
+      responses:
+        '200':
+          description: Registered
+        '400':
+          description: Invalid URL or schema version mismatch
+        '409':
+          description: Name already registered
+
+  /api/models/{name}:
+    delete:
+      tags: [models]
+      summary: Unregister a model service
+      parameters:
+        - name: name
+          in: path
+          required: true
+          schema: {type: string}
+      responses:
+        '200':
+          description: Unregistered
+
+  /api/models/{name}/info:
+    get:
+      tags: [models]
+      summary: Proxy /info call to a registered model
+      parameters:
+        - name: name
+          in: path
+          required: true
+          schema: {type: string}
+      responses:
+        '200':
+          description: OK
+
+  /api/network-graph:
+    get:
+      tags: [topology]
+      summary: Network topology, proxied from Simulation Manager
+      responses:
+        '200':
+          description: OK
+
+  /api/baseline/record:
+    post:
+      tags: [control]
+      summary: Trigger a baseline recording (forwarded via Redis)
+      responses:
+        '200':
+          description: Command published
+
+  /api/baseline/stop:
+    post:
+      tags: [control]
+      summary: Stop an in-progress baseline recording
+      responses:
+        '200':
+          description: Command published
+
+  /api/baseline/data:
+    get:
+      tags: [telemetry]
+      summary: Last saved baseline metrics
+      responses:
+        '200':
+          description: OK
+
+  /ws:
+    get:
+      tags: [telemetry]
+      summary: WebSocket relaying Redis pub/sub channels to the browser
+      description: |
+        Subscribes server-side to `gnn_metrics`, `mpc_metrics`,
+        `simulation_status`, `evps_status`, and any
+        `<model>_metrics` channels. Each Redis message is forwarded as:
+        ```json
+        {"channel": "gnn_metrics", "data": {...}}
+        ```
+      responses:
+        '101':
+          description: Switching protocols
+
+components:
+  schemas:
+    RegisteredModel:
+      type: object
+      required: [name, url, registered_at]
+      properties:
+        name: {type: string}
+        url: {type: string, format: uri}
+        description: {type: string}
+        registered_at: {type: string, format: date-time}
+        last_seen_at: {type: string, format: date-time, nullable: true}
+        info:
+          type: object
+          description: Cached /info response
+        status:
+          type: string
+          enum: [healthy, unreachable, schema_mismatch]
