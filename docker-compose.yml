@@ -63,11 +63,11 @@ services:
       DEFAULT_SCENARIO: grid3x3
 
       # ── Model Routing (Phase 3+) ─────────────────────────────────
-      # Uncomment to route GNN inference to the dedicated gnn_service
-      # container. Without it, the Manager uses its in-process GNN
-      # adapter (Phase 2 behavior) — useful as a fallback if the
-      # gnn_service is unavailable.
+      # Uncomment to route a model through HTTP to its dedicated service.
+      # Without it, the Manager uses its in-process adapter (Phase 2
+      # behavior) — useful as a fallback if the service is unavailable.
       # MODEL_GNN_URL: http://gnn_service:8002
+      # MODEL_MPC_URL: http://mpc_service:8003
       # Optional tuning:
       # MODEL_TIMEOUT_MS: 2000
       # MODEL_RESET_TIMEOUT_MS: 30000
@@ -128,6 +128,39 @@ services:
       - ./simulation_and_control_panel/scenarios:/workspace/simulation_and_control_panel/scenarios:ro
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8002/health')"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 90s
+    restart: unless-stopped
+
+  # ───────────────────────────────────────────────────────────────────
+  # MPC Service (Phase 4) — FastAPI wrapper around services/mpc_traffic_control.
+  # The Manager calls this service via http://mpc_service:8003/predict
+  # when MODEL_MPC_URL is set in the simulation_manager environment above.
+  # ───────────────────────────────────────────────────────────────────
+  mpc_service:
+    build:
+      context: ./services/mpc_service
+      dockerfile: Dockerfile
+    container_name: traffic_mpc_service
+    ports:
+      - "8003:8003"
+    environment:
+      HOST: 0.0.0.0
+      PORT: 8003
+      WEIGHTS_DIR: /workspace/services/mpc_traffic_control/data
+      SCENARIOS_DIR: /workspace/simulation_and_control_panel/scenarios
+      MAX_INFERENCE_MS: 2000
+      DECISION_INTERVAL_STEPS: 15
+    volumes:
+      # Same /workspace mirroring as simulation_manager so the mpc_service
+      # can import services/mpc_traffic_control/src/* using its existing
+      # relative-path resolution.
+      - ./services/mpc_traffic_control:/workspace/services/mpc_traffic_control:ro
+      - ./simulation_and_control_panel/scenarios:/workspace/simulation_and_control_panel/scenarios:ro
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8003/health')"]
       interval: 30s
       timeout: 5s
       retries: 3

@@ -283,16 +283,13 @@ def unload_optimizer():
 
 @app.route('/api/optimizer/mpc/internals', methods=['GET'])
 def get_mpc_internals():
-    """Return last MPC optimizer decisions + config for the dashboard Internals tab."""
-    optimizer = getattr(sim_controller, 'optimizer', None)
-    if optimizer is None or not hasattr(optimizer, 'get_internals'):
-        return jsonify({"status": "idle", "message": "MPC optimizer not loaded"})
-    try:
-        data = optimizer.get_internals()
-        data["status"] = "active"
-        return jsonify(data)
-    except Exception as e:
-        return jsonify({"status": "error", "message": str(e)})
+    """Return last MPC optimizer decisions + config for the dashboard Internals tab.
+
+    Phase 4: handles both in-process and HTTP-routed MPC. The dispatch
+    logic lives in sim_controller.get_mpc_internals() so this endpoint
+    stays a thin shim.
+    """
+    return jsonify(sim_controller.get_mpc_internals())
 
 @app.route('/api/evps/toggle', methods=['POST'])
 def toggle_evps():

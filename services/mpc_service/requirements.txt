@@ -1,0 +1,21 @@
+# MPC Service — Python dependencies
+#
+# Heavy ML/optimization libs live here (Phase 4 onward they leave the
+# Manager's image — Phase 7 cleanup).
+
+# ── Web framework ────────────────────────────────────────────────────────
+fastapi==0.110.0
+uvicorn[standard]==0.29.0
+pydantic>=2.0.0
+python-dotenv==1.0.0
+
+# ── MPC core (consumed via services/mpc_traffic_control/src) ────────────
+torch>=2.0.0       # LSTM DemandPredictor
+numpy>=1.24.0
+pandas>=2.0.0
+scipy>=1.10.0      # solver fallback (OSQP / IPOPT optional via system pkg)
+
+# ── SUMO Python bindings (sumolib only — no SUMO binary needed here) ────
+# sumolib parses .net.xml to build TLS / lane topology. The actual SUMO
+# binary is not required in this service.
+sumolib>=1.18.0

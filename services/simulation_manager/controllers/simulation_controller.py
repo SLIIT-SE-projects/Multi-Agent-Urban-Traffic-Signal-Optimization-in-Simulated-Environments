@@ -417,6 +417,46 @@ class SimulationController:
             "_internal_net_xml_path": net_file,
         }
 
+    def get_mpc_internals(self) -> dict:
+        """Return MPC-specific internals for the dashboard Internals tab.
+
+        Works for both in-process and HTTP-routed MPC (Phase 4+):
+          - In-process : calls adapter.get_internals() directly
+          - HTTP       : proxies to <MODEL_MPC_URL>/internals
+
+        Used by the /api/optimizer/mpc/internals endpoint in app.py.
+        """
+        # In-process path — adapter still attached (Phase 2 / 3 behavior)
+        if self.optimizer is not None and hasattr(self.optimizer, 'get_internals'):
+            try:
+                data = self.optimizer.get_internals()
+                data["status"] = "active"
+                return data
+            except Exception as exc:
+                return {"status": "error", "message": str(exc)}
+
+        # HTTP path — active model is MPC routed over HTTP
+        if self.model_router is not None:
+            try:
+                info = self.model_router.info()
+                if info.get('name') == 'mpc':
+                    http_url = os.environ.get('MODEL_MPC_URL', '')
+                    if http_url:
+                        try:
+                            import requests
+                            resp = requests.get(
+                                f"{http_url.rstrip('/')}/internals",
+                                timeout=2.0,
+                            )
+                            resp.raise_for_status()
+                            return resp.json()
+                        except Exception as exc:
+                            return {"status": "error", "message": str(exc)}
+            except Exception:
+                pass
+
+        return {"status": "idle", "message": "MPC optimizer not loaded"}
+
     def load_optimizer(self, model_type: str = "gnn") -> dict:
         """Backward-compat alias for load_model().
 
