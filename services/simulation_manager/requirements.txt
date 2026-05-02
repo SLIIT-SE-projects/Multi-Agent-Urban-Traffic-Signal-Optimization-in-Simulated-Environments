@@ -12,6 +12,9 @@ flask-sock==0.7.0
 eventlet==0.33.3
 python-dotenv==1.0.0
 
+# ── HTTP client (Phase 3+) — used by HttpModelRouter to call model services ─
+requests>=2.32.0
+
 # ── SUMO Python integration ──────────────────────────────────────────────
 # Both packages are pip-installable WITHOUT needing the SUMO C++ binary.
 # In SUMO_MODE=remote the binary lives on the host.

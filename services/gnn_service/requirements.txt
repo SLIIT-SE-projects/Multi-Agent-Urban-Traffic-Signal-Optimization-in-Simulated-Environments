@@ -1,0 +1,20 @@
+# GNN Service — Python dependencies
+#
+# Heavy ML libs live ONLY in this service (Phase 3 onward they leave the
+# Manager's image). The Manager calls /predict over HTTP.
+
+# ── Web framework ────────────────────────────────────────────────────────
+fastapi==0.110.0
+uvicorn[standard]==0.29.0
+pydantic>=2.0.0
+python-dotenv==1.0.0
+
+# ── ML / inference ───────────────────────────────────────────────────────
+torch>=2.0.0
+torch-geometric>=2.4.0
+numpy>=1.24.0
+
+# ── SUMO Python bindings (sumolib only — no TraCI server needed here) ───
+# sumolib parses .net.xml to build the graph. The actual SUMO binary is
+# not required in this service.
+sumolib>=1.18.0

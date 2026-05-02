@@ -54,6 +54,18 @@ class Config:
     )
     DEFAULT_SCENARIO: str = os.getenv('DEFAULT_SCENARIO', 'grid3x3')
 
+    # ── Model Routing (Phase 3+) ─────────────────────────────────────
+    # When MODEL_<NAME>_URL is set, the named model is routed through HTTP
+    # to the given URL instead of the in-process adapter. Empty string
+    # means use the in-process adapter (Phase 2 fallback).
+    # Examples (set via environment, do NOT hardcode here):
+    #   MODEL_GNN_URL=http://gnn_service:8002
+    #   MODEL_MPC_URL=http://mpc_service:8003
+    MODEL_GNN_URL: str = os.getenv('MODEL_GNN_URL', '')
+    MODEL_MPC_URL: str = os.getenv('MODEL_MPC_URL', '')
+    MODEL_TIMEOUT_MS: int = int(os.getenv('MODEL_TIMEOUT_MS', '2000'))
+    MODEL_RESET_TIMEOUT_MS: int = int(os.getenv('MODEL_RESET_TIMEOUT_MS', '30000'))
+
     @property
     def DEFAULT_CONFIG_FILE(self) -> str:
         explicit = os.getenv('DEFAULT_CONFIG_FILE')

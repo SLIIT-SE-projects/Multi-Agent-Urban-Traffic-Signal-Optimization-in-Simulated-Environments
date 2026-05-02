@@ -299,9 +299,15 @@ class SimulationController:
     def load_model(self, name: str = "gnn") -> dict:
         """Load a model by name and wrap it in a ModelRouter.
 
-        Phase 2: only the in-process router is used. Phase 3+ will route
-        'gnn' and 'mpc' through HTTP to dedicated services, and add support
-        for arbitrary registered model names.
+        Phase 3: dispatches between InProcessModelRouter and HttpModelRouter
+        based on the MODEL_<NAME>_URL env var:
+          - Set    → HttpModelRouter (Phase 3+ for GNN, Phase 4+ for MPC)
+          - Unset  → InProcessModelRouter (Phase 2 behavior, preserved as fallback)
+
+        Setting MODEL_GNN_URL=http://gnn_service:8002 promotes GNN inference
+        to the dedicated gnn_service container. Unsetting falls back to the
+        in-process adapter without any code change — useful for development
+        and as a safety net when the model service is unavailable.
         """
         print(f"🔌 Loading model: {name.upper()}")
 
@@ -310,18 +316,61 @@ class SimulationController:
             print("❌ Cannot load model: Network file could not be determined from config.")
             return {"status": "error", "message": "Network file not found"}
 
-        try:
-            if name == "gnn":
-                adapter = GNNTrafficOptimizer(net_path=current_net_file)
-            elif name == "mpc":
-                adapter = MPCTrafficOptimizer(net_path=current_net_file)
-            else:
-                return {"status": "error", "message": f"Unknown model: {name}"}
+        scenario_name = os.path.basename(os.path.dirname(self.config_file))
+        http_url = self._get_model_http_url(name)
 
-            self.model_router = InProcessModelRouter(name, adapter)
-            self.optimizer = adapter   # Backward-compat for endpoints that touch the adapter directly
-            self.session_id = f"sess_{int(time.time())}"
-            self.model_router.reset(session_id=self.session_id, network={}, config={})
+        try:
+            if http_url:
+                # ── HTTP router ────────────────────────────────────────
+                from routing.http_router import HttpModelRouter
+                print(f"🌐 [{name.upper()}] Using HTTP router → {http_url}")
+
+                timeout_ms = int(os.environ.get('MODEL_TIMEOUT_MS', '2000'))
+                reset_timeout_ms = int(os.environ.get('MODEL_RESET_TIMEOUT_MS', '30000'))
+                auth_token = os.environ.get(f'MODEL_{name.upper()}_AUTH_TOKEN')
+
+                self.model_router = HttpModelRouter(
+                    model_name=name,
+                    base_url=http_url,
+                    timeout_ms=timeout_ms,
+                    reset_timeout_ms=reset_timeout_ms,
+                    auth_token=auth_token,
+                )
+                self.optimizer = None   # No in-process adapter when routing over HTTP
+
+                # Build network dict for /reset. Phase 3 uses the
+                # _internal_net_xml_path shortcut so the model service
+                # can use sumolib directly. Phase 7 will populate the
+                # full topology dict per network.schema.json so external
+                # researchers don't need to mount scenario files.
+                network = self._build_network_dict_for_reset(current_net_file, scenario_name)
+
+                self.session_id = f"sess_{int(time.time())}"
+                try:
+                    self.model_router.reset(
+                        session_id=self.session_id,
+                        network=network,
+                        config={"scenario": scenario_name},
+                    )
+                except Exception as exc:
+                    self.model_router = None
+                    self.optimization_enabled = False
+                    return {"status": "error", "message": f"Model service /reset failed: {exc}"}
+            else:
+                # ── In-process router (Phase 2 fallback) ───────────────
+                print(f"📦 [{name.upper()}] Using in-process router")
+                if name == "gnn":
+                    adapter = GNNTrafficOptimizer(net_path=current_net_file)
+                elif name == "mpc":
+                    adapter = MPCTrafficOptimizer(net_path=current_net_file)
+                else:
+                    return {"status": "error", "message": f"Unknown model: {name}"}
+
+                self.model_router = InProcessModelRouter(name, adapter)
+                self.optimizer = adapter   # Backward-compat for endpoints that touch the adapter directly
+                self.session_id = f"sess_{int(time.time())}"
+                self.model_router.reset(session_id=self.session_id, network={}, config={})
+
             self.optimization_enabled = True
 
             info = self.model_router.info()
@@ -334,6 +383,39 @@ class SimulationController:
             import traceback
             traceback.print_exc()
             return {"status": "error", "message": str(e)}
+
+    def _get_model_http_url(self, name: str):
+        """Return the HTTP URL for a model service, or None if not configured.
+
+        Looks up MODEL_<NAME>_URL environment variable.
+        Examples:
+            MODEL_GNN_URL=http://gnn_service:8002
+            MODEL_MPC_URL=http://mpc_service:8003
+
+        An empty-string value is treated the same as unset (so docker-compose
+        env shapes like ``MODEL_GNN_URL: ""`` cleanly disable the HTTP route).
+        """
+        url = os.environ.get(f'MODEL_{name.upper()}_URL', '')
+        return url if url else None
+
+    def _build_network_dict_for_reset(self, net_file: str, scenario_name: str) -> dict:
+        """Build a network topology dict for the /reset payload.
+
+        Phase 3 includes a `_internal_net_xml_path` shortcut so the model
+        service can use sumolib directly against the same .net.xml file
+        the Manager sees. Phase 7 will populate the full intersections /
+        lanes / edges / connections per
+        contracts/schemas/network.schema.json so external researchers
+        don't need to mount scenario files.
+        """
+        return {
+            "scenario_name": scenario_name,
+            "intersections": [],
+            "lanes": [],
+            "edges": [],
+            "connections": [],
+            "_internal_net_xml_path": net_file,
+        }
 
     def load_optimizer(self, model_type: str = "gnn") -> dict:
         """Backward-compat alias for load_model().

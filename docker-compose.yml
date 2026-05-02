@@ -61,6 +61,16 @@ services:
       PROJECT_ROOT: /workspace
       SCENARIOS_DIR: /workspace/simulation_and_control_panel/scenarios
       DEFAULT_SCENARIO: grid3x3
+
+      # ── Model Routing (Phase 3+) ─────────────────────────────────
+      # Uncomment to route GNN inference to the dedicated gnn_service
+      # container. Without it, the Manager uses its in-process GNN
+      # adapter (Phase 2 behavior) — useful as a fallback if the
+      # gnn_service is unavailable.
+      # MODEL_GNN_URL: http://gnn_service:8002
+      # Optional tuning:
+      # MODEL_TIMEOUT_MS: 2000
+      # MODEL_RESET_TIMEOUT_MS: 30000
     volumes:
       # Mirror the host repo layout inside the container at /workspace.
       # The in-process adapters in Phase 2 use `../../../services/...`
@@ -82,4 +92,44 @@ services:
     depends_on:
       redis:
         condition: service_healthy
+      # Phase 3+: uncomment when MODEL_GNN_URL is set above so the
+      # Manager waits for gnn_service to be ready before accepting
+      # /api/optimizer/load requests.
+      # gnn_service:
+      #   condition: service_healthy
+    restart: unless-stopped
+
+  # ───────────────────────────────────────────────────────────────────
+  # GNN Service (Phase 3) — FastAPI wrapper around services/gnn_optimizer.
+  # The Manager calls this service via http://gnn_service:8002/predict
+  # when MODEL_GNN_URL is set in the simulation_manager environment above.
+  # ───────────────────────────────────────────────────────────────────
+  gnn_service:
+    build:
+      context: ./services/gnn_service
+      dockerfile: Dockerfile
+    container_name: traffic_gnn_service
+    ports:
+      - "8002:8002"
+    environment:
+      HOST: 0.0.0.0
+      PORT: 8002
+      MODEL_WEIGHTS_PATH: /workspace/model_weights/final_marl_model_best.pth
+      SCENARIOS_DIR: /workspace/simulation_and_control_panel/scenarios
+      MAX_INFERENCE_MS: 2000
+      DECISION_INTERVAL_STEPS: 15
+      MC_DROPOUT_SAMPLES: 20
+    volumes:
+      # Same /workspace mirroring as simulation_manager so the gnn_service
+      # can import services/gnn_optimizer/src/* using its existing
+      # relative-path resolution.
+      - ./services/gnn_optimizer:/workspace/services/gnn_optimizer:ro
+      - ./model_weights:/workspace/model_weights:ro
+      - ./simulation_and_control_panel/scenarios:/workspace/simulation_and_control_panel/scenarios:ro
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8002/health')"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 90s
     restart: unless-stopped
