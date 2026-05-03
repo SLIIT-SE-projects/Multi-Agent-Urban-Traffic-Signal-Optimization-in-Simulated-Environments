@@ -68,9 +68,11 @@ services:
       # behavior) — useful as a fallback if the service is unavailable.
       # MODEL_GNN_URL: http://gnn_service:8002
       # MODEL_MPC_URL: http://mpc_service:8003
+      # EVPS_URL: http://evps_service:8004
       # Optional tuning:
       # MODEL_TIMEOUT_MS: 2000
       # MODEL_RESET_TIMEOUT_MS: 30000
+      # EVPS_TIMEOUT_MS: 2000
     volumes:
       # Mirror the host repo layout inside the container at /workspace.
       # The in-process adapters in Phase 2 use `../../../services/...`
@@ -161,6 +163,37 @@ services:
       - ./simulation_and_control_panel/scenarios:/workspace/simulation_and_control_panel/scenarios:ro
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8003/health')"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 90s
+    restart: unless-stopped
+
+  # ───────────────────────────────────────────────────────────────────
+  # EVPS Service (Phase 5) — FastAPI wrapper around the EV preemption logic.
+  # The Manager calls this service via http://evps_service:8004/step every
+  # simulation tick when EVPS_URL is set in the simulation_manager
+  # environment above. The Manager applies the returned overrides via
+  # TraCI and relays broadcasts to the driver app's WebSocket.
+  # ───────────────────────────────────────────────────────────────────
+  evps_service:
+    build:
+      context: ./services/evps_service
+      dockerfile: Dockerfile
+    container_name: traffic_evps_service
+    ports:
+      - "8004:8004"
+    environment:
+      HOST: 0.0.0.0
+      PORT: 8004
+      EVPS_MODELS_DIR: /workspace/services/emergency_vehicle_preemption
+      SEQUENCE_LENGTH: 10
+      ETA_SMOOTHING_ALPHA: 0.3
+      MAX_INFERENCE_MS: 500
+    volumes:
+      - ./services/emergency_vehicle_preemption:/workspace/services/emergency_vehicle_preemption:ro
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8004/health')"]
       interval: 30s
       timeout: 5s
       retries: 3

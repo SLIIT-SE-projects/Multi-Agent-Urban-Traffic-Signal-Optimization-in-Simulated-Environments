@@ -66,6 +66,12 @@ class Config:
     MODEL_TIMEOUT_MS: int = int(os.getenv('MODEL_TIMEOUT_MS', '2000'))
     MODEL_RESET_TIMEOUT_MS: int = int(os.getenv('MODEL_RESET_TIMEOUT_MS', '30000'))
 
+    # ── EVPS Routing (Phase 5+) ──────────────────────────────────────
+    # When EVPS_URL is set, EVPS calls go to the dedicated evps_service.
+    # Empty string means use the in-process EVPSAdapter (Phase 2 fallback).
+    EVPS_URL: str = os.getenv('EVPS_URL', '')
+    EVPS_TIMEOUT_MS: int = int(os.getenv('EVPS_TIMEOUT_MS', '2000'))
+
     @property
     def DEFAULT_CONFIG_FILE(self) -> str:
         explicit = os.getenv('DEFAULT_CONFIG_FILE')

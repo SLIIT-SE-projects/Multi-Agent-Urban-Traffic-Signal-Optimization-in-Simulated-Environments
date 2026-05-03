@@ -43,23 +43,34 @@ state_controller = StateController(sim_controller, data_controller)
 # ============================================================================
 @sock.route('/ws')
 def green_wave_ws(ws):
-    evps_adapter.set_websocket(ws)
+    """Driver-app WebSocket.
+
+    Phase 5: WS connections are tracked on the SimulationController so the
+    Manager can relay broadcasts from either the in-process EVPSAdapter or
+    the HTTP-routed evps_service. Incoming messages dispatch through the
+    controller too — it knows which backend is active.
+    """
+    sim_controller.register_ws_client(ws)
     try:
         while True:
             data = ws.receive()
             if data:
                 try:
                     message = json.loads(data)
-                    if message.get("type") == "switch_ev":
-                        evps_adapter.switch_vehicle(message.get("ev_id"))
-                    elif message.get("type") == "set_priority":
-                        evps_adapter.set_ev_priority(message.get("ev_id"), message.get("priority"))
-                except:
+                    msg_type = message.get("type")
+                    if msg_type == "switch_ev":
+                        sim_controller.evps_set_focus(message.get("ev_id"))
+                    elif msg_type == "set_priority":
+                        sim_controller.evps_set_priority(
+                            message.get("ev_id"),
+                            message.get("priority"),
+                        )
+                except Exception:
                     pass
     except Exception as e:
         print(f"WS Error: {e}")
     finally:
-        evps_adapter.disconnect_websocket(ws)
+        sim_controller.unregister_ws_client(ws)
 
 
 # ============================================================================
@@ -295,8 +306,7 @@ def get_mpc_internals():
 def toggle_evps():
     data = request.get_json(silent=True) or {}
     enable = data.get('enable', False)
-    evps_adapter.toggle_evps(bool(enable))
-    return jsonify({"status": "success", "evps_enabled": bool(enable)})
+    return jsonify(sim_controller.evps_toggle(bool(enable)))
 
 @app.route('/api/evps/spawn_geo', methods=['POST'])
 def spawn_ev_from_geo():
@@ -318,7 +328,7 @@ def spawn_ev_from_geo():
     except ValueError:
         return jsonify({"status": "error", "message": "Invalid coordinates format"}), 400
 
-    result = evps_adapter.spawn_ev_from_geo(start_lon, start_lat, end_lon, end_lat, ev_id=ev_id)
+    result = sim_controller.evps_spawn_geo(start_lon, start_lat, end_lon, end_lat, ev_id=ev_id)
     if result.get("status") == "error":
         return jsonify(result), 400
     return jsonify(result)
@@ -327,7 +337,7 @@ def spawn_ev_from_geo():
 def spawn_random_ev():
     data = request.get_json(silent=True) or {}
     ev_id = data.get('ev_id')
-    result = evps_adapter.spawn_random_ev(ev_id=ev_id)
+    result = sim_controller.evps_spawn_random(ev_id=ev_id)
     return jsonify(result)
 
 @app.route('/api/simulation/topology', methods=['GET'])

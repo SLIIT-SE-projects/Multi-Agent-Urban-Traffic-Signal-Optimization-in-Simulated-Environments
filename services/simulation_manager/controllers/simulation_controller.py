@@ -49,6 +49,11 @@ class SimulationController:
         self.flow_rates: dict = {}          # route_id -> vehicles_per_hour
         self._flow_last_injections: dict = {}  # route_id -> last sim-time (s)
         self._flow_vehicle_counter: int = 0
+        # ── Phase 5: EVPS HTTP integration ──────────────────────────
+        self.ws_clients: set = set()        # Raw WebSocket connections (driver app)
+        self.evps_client = None              # HTTP client to EVPS service if EVPS_URL set
+        self._evps_session_id = None
+        self._init_evps_client()
 
     def _get_net_file_from_config(self):
         """
@@ -547,7 +552,11 @@ class SimulationController:
         self._inject_flow_vehicles()
 
         # 3.6. EVPS AI LOGIC
-        if self.evps_adapter:
+        # Phase 5: prefer the HTTP client when configured; fall back to the
+        # in-process adapter (Phase 2 behavior) otherwise.
+        if self.evps_client is not None:
+            self._run_evps_step_via_http()
+        elif self.evps_adapter is not None:
             self.evps_adapter.execute_step()
 
         # 4. DATA BROADCAST (Optimized)
@@ -759,6 +768,15 @@ class SimulationController:
             self.is_paused = False
             self.current_step = 0
             print(f"Simulation started — mode={conn_info.get('mode')}, config={self.config_file}")
+
+            # Phase 5: reset the EVPS service for the new session
+            if self.evps_client is not None:
+                try:
+                    self._evps_session_id = f"evps_{int(time.time())}"
+                    self.evps_client.reset(self._evps_session_id)
+                    print(f"[EVPS] HTTP session reset: {self._evps_session_id}")
+                except Exception as exc:
+                    print(f"⚠️ [EVPS] /reset failed: {exc}")
 
             return {
                 "status": "success",
@@ -1048,13 +1066,297 @@ class SimulationController:
         """Resume simulation"""
         if not self.is_running:
             return {"status": "error", "message": "Simulation not running"}
-            
+
         if not self.is_paused:
             return {"status": "error", "message": "Simulation not paused"}
-            
+
         self.is_paused = False
         return {"status": "success", "message": "Simulation resumed", "step": self.current_step}
-    
+
+    # =========================================================================
+    # Phase 5: EVPS HTTP integration
+    # =========================================================================
+
+    def _init_evps_client(self) -> None:
+        """Configure EvpsClient if EVPS_URL is set, else None."""
+        evps_url = os.environ.get('EVPS_URL', '')
+        if not evps_url:
+            return
+        try:
+            from routing.evps_client import EvpsClient
+            self.evps_client = EvpsClient(
+                base_url=evps_url,
+                timeout_ms=int(os.environ.get('EVPS_TIMEOUT_MS', '2000')),
+            )
+            print(f"🌐 [EVPS] Using HTTP client → {evps_url}")
+        except Exception as exc:
+            print(f"⚠️ [EVPS] Failed to init client: {exc}")
+
+    # ── WebSocket client management (driver app) ──────────────────
+
+    def register_ws_client(self, ws) -> None:
+        """Register a raw WebSocket connection from the driver app."""
+        self.ws_clients.add(ws)
+        # Backward compat: also register on the in-process adapter so that
+        # path keeps broadcasting status to the driver app.
+        if self.evps_adapter is not None and hasattr(self.evps_adapter, 'set_websocket'):
+            self.evps_adapter.set_websocket(ws)
+
+    def unregister_ws_client(self, ws) -> None:
+        self.ws_clients.discard(ws)
+        if self.evps_adapter is not None and hasattr(self.evps_adapter, 'disconnect_websocket'):
+            self.evps_adapter.disconnect_websocket(ws)
+
+    # ── EVPS API forwarding (in-process or HTTP) ──────────────────
+
+    def evps_toggle(self, enable: bool) -> dict:
+        """Enable/disable EVPS. Forwards to HTTP client when configured."""
+        if self.evps_client is not None:
+            self.evps_client.toggle(enable)
+            return {"status": "success", "evps_enabled": bool(enable), "via": "http"}
+        if self.evps_adapter is not None:
+            self.evps_adapter.toggle_evps(bool(enable))
+            return {"status": "success", "evps_enabled": bool(enable), "via": "in_process"}
+        return {"status": "error", "message": "EVPS not configured"}
+
+    def evps_set_focus(self, ev_id: str) -> dict:
+        if self.evps_client is not None:
+            return self.evps_client.set_focus(ev_id)
+        if self.evps_adapter is not None:
+            self.evps_adapter.switch_vehicle(ev_id)
+            return {"status": "ok"}
+        return {"status": "error", "message": "EVPS not configured"}
+
+    def evps_set_priority(self, ev_id: str, priority) -> dict:
+        if self.evps_client is not None:
+            return self.evps_client.set_priority(ev_id, int(priority))
+        if self.evps_adapter is not None:
+            self.evps_adapter.set_ev_priority(ev_id, priority)
+            return {"status": "ok"}
+        return {"status": "error", "message": "EVPS not configured"}
+
+    def evps_spawn_geo(self, start_lon, start_lat, end_lon, end_lat, ev_id=None) -> dict:
+        """Spawn EV from geo coordinates.
+
+        TraCI work happens via the in-process adapter (it owns the spawn
+        logic). When HTTP routing is active, we ALSO notify the EVPS
+        service so it can register the EV in its fleet.
+        """
+        if self.evps_adapter is None:
+            return {"status": "error", "message": "EVPS not configured"}
+        result = self.evps_adapter.spawn_ev_from_geo(
+            start_lon, start_lat, end_lon, end_lat, ev_id=ev_id,
+        )
+        if self.evps_client is not None and result.get("status") == "success":
+            veh_id = result.get("vehicle_id")
+            if veh_id:
+                try:
+                    self.evps_client.register_ev(veh_id, priority=1, vehicle_type="ambulance")
+                    self.evps_client.set_focus(veh_id)
+                except Exception as exc:
+                    print(f"⚠️ [EVPS] register_ev failed: {exc}")
+        return result
+
+    def evps_spawn_random(self, ev_id=None) -> dict:
+        if self.evps_adapter is None:
+            return {"status": "error", "message": "EVPS not configured"}
+        result = self.evps_adapter.spawn_random_ev(ev_id=ev_id)
+        if self.evps_client is not None and result.get("status") == "success":
+            veh_id = result.get("vehicle_id")
+            if veh_id:
+                try:
+                    self.evps_client.register_ev(veh_id, priority=1, vehicle_type="ambulance")
+                    self.evps_client.set_focus(veh_id)
+                except Exception as exc:
+                    print(f"⚠️ [EVPS] register_ev failed: {exc}")
+        return result
+
+    # ── Per-step HTTP EVPS execution ──────────────────────────────
+
+    def _run_evps_step_via_http(self) -> None:
+        """Build snapshot, call /step, apply overrides, relay broadcasts."""
+        try:
+            snapshot = self._build_evps_snapshot()
+            response = self.evps_client.step(snapshot)
+            self._apply_evps_overrides(response.get('overrides', {}))
+            self._handle_evps_released_locks(response.get('released_locks', []))
+            self._relay_evps_broadcasts(response.get('broadcasts', {}))
+        except Exception as exc:
+            print(f"⚠️ [EVPS] step error: {exc}")
+
+    def _build_evps_snapshot(self) -> dict:
+        """Capture all data the EVPS service needs from TraCI for one step.
+
+        Includes EV-prefixed vehicles, all TLS state + phase definitions,
+        and lane data for lanes EVPS may need to inspect (controlled lanes
+        + downstream lanes from EV routes).
+        """
+        vehicles_data = []
+
+        for veh_id in traci.vehicle.getIDList():
+            if not veh_id.startswith("EV_"):
+                continue
+            try:
+                position = traci.vehicle.getPosition(veh_id)
+                lat = lon = 0.0
+                try:
+                    lon, lat = traci.simulation.convertGeo(position[0], position[1])
+                except Exception:
+                    pass
+
+                current_lane = traci.vehicle.getLaneID(veh_id)
+                current_lane_halting = 0
+                current_lane_length = 0.0
+                try:
+                    current_lane_halting = traci.lane.getLastStepHaltingNumber(current_lane)
+                    current_lane_length = traci.lane.getLength(current_lane)
+                except Exception:
+                    pass
+
+                next_tls = []
+                try:
+                    for t_id, t_index, t_dist, t_state in traci.vehicle.getNextTLS(veh_id):
+                        next_tls.append({
+                            "tls_id": t_id,
+                            "tls_index": t_index,
+                            "distance": t_dist,
+                            "state": t_state,
+                        })
+                except Exception:
+                    pass
+
+                leader_info = None
+                try:
+                    leader = traci.vehicle.getLeader(veh_id, 200)
+                    if leader:
+                        leader_info = {
+                            "id": leader[0],
+                            "gap": leader[1],
+                            "speed": traci.vehicle.getSpeed(leader[0]),
+                        }
+                except Exception:
+                    pass
+
+                vehicles_data.append({
+                    "id": veh_id,
+                    "type": traci.vehicle.getTypeID(veh_id),
+                    "speed": traci.vehicle.getSpeed(veh_id),
+                    "acceleration": traci.vehicle.getAcceleration(veh_id),
+                    "position": [position[0], position[1]],
+                    "geo_position": [lon, lat],
+                    "current_lane": current_lane,
+                    "lane_position": traci.vehicle.getLanePosition(veh_id),
+                    "current_edge": traci.vehicle.getRoadID(veh_id),
+                    "route": list(traci.vehicle.getRoute(veh_id)),
+                    "current_lane_length": current_lane_length,
+                    "current_lane_halting": current_lane_halting,
+                    "next_tls": next_tls,
+                    "leader": leader_info,
+                })
+            except Exception as exc:
+                print(f"[EVPS] Failed to capture {veh_id}: {exc}")
+
+        # TLS state with phase definitions
+        tls_states = {}
+        for tls_id in traci.trafficlight.getIDList():
+            try:
+                phase_index = traci.trafficlight.getPhase(tls_id)
+                phase_state = traci.trafficlight.getRedYellowGreenState(tls_id)
+                controlled_lanes = list(traci.trafficlight.getControlledLanes(tls_id))
+
+                phases = []
+                try:
+                    logics = traci.trafficlight.getAllProgramLogics(tls_id)
+                    if logics:
+                        for i, p in enumerate(logics[0].phases):
+                            phases.append({"index": i, "state": p.state})
+                except Exception:
+                    pass
+
+                geo_position = None
+                try:
+                    pos = traci.junction.getPosition(tls_id)
+                    g_lon, g_lat = traci.simulation.convertGeo(pos[0], pos[1])
+                    geo_position = [g_lon, g_lat]
+                except Exception:
+                    pass
+
+                tls_states[tls_id] = {
+                    "phase_index": phase_index,
+                    "phase_state": phase_state,
+                    "controlled_lanes": controlled_lanes,
+                    "phases": phases,
+                    "geo_position": geo_position,
+                }
+            except Exception:
+                pass
+
+        # Lane data for lanes EVPS may inspect
+        lanes_of_interest = set()
+        for tls in tls_states.values():
+            for lane in tls.get("controlled_lanes", []):
+                lanes_of_interest.add(lane)
+        for v in vehicles_data:
+            for edge in v.get("route", []):
+                lanes_of_interest.add(f"{edge}_0")
+
+        lane_data = {}
+        for lane in lanes_of_interest:
+            try:
+                lane_data[lane] = {
+                    "halting": traci.lane.getLastStepHaltingNumber(lane),
+                    "vehicle_count": traci.lane.getLastStepVehicleNumber(lane),
+                    "length": traci.lane.getLength(lane),
+                }
+            except Exception:
+                pass
+
+        return {
+            "step": self.current_step,
+            "session_id": self._evps_session_id or "default",
+            "sim_time": traci.simulation.getTime(),
+            "vehicles": vehicles_data,
+            "tls": tls_states,
+            "lanes": lane_data,
+        }
+
+    def _apply_evps_overrides(self, overrides: dict) -> None:
+        """Apply each EVPS override via traci.trafficlight.setRedYellowGreenState."""
+        if not overrides:
+            return
+        for tls_id, override in overrides.items():
+            phase_state = override.get("phase_state")
+            if not phase_state:
+                continue
+            try:
+                traci.trafficlight.setRedYellowGreenState(tls_id, phase_state)
+            except Exception as exc:
+                print(f"[EVPS] override apply failed at {tls_id}: {exc}")
+
+    def _handle_evps_released_locks(self, released: list) -> None:
+        """Restore default program for TLSes whose EVPS lock was released."""
+        for tls_id in (released or []):
+            try:
+                traci.trafficlight.setProgram(tls_id, "0")
+            except Exception:
+                pass
+
+    def _relay_evps_broadcasts(self, broadcasts: dict) -> None:
+        """Forward EVPS broadcast payloads to all connected driver-app WS clients."""
+        if not broadcasts or not self.ws_clients:
+            return
+        import json
+        dead = set()
+        for ws in list(self.ws_clients):
+            for ev_id, payload in broadcasts.items():
+                try:
+                    ws.send(json.dumps(payload))
+                except Exception:
+                    dead.add(ws)
+                    break
+        for ws in dead:
+            self.ws_clients.discard(ws)
+
     def stop(self):
         """Stop and close simulation"""
         if not self.is_running:

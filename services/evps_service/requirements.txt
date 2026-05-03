@@ -1,0 +1,15 @@
+# EVPS Service — Python dependencies
+#
+# Heavy ML libs live ONLY in this service from Phase 5 onward.
+
+# ── Web framework ────────────────────────────────────────────────────────
+fastapi==0.110.0
+uvicorn[standard]==0.29.0
+pydantic>=2.0.0
+python-dotenv==1.0.0
+
+# ── ML / inference ───────────────────────────────────────────────────────
+tensorflow>=2.15.0      # ETA predictor (Keras LSTM)
+scikit-learn>=1.3.0     # Safety classifier
+numpy>=1.24.0
+pandas>=2.0.0
