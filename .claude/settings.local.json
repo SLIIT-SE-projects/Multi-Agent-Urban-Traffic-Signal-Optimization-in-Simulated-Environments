@@ -1,8 +1,0 @@
-{
-  "permissions": {
-    "allow": [
-      "Bash(python -X utf8 -c \"import ast; [ast.parse\\(open\\(f, encoding='utf-8'\\).read\\(\\)\\) for f in ['controllers/simulation_controller.py','controllers/scenario_controller.py','controllers/data_controller.py','controllers/state_controller.py','app.py','config.py','routing/inprocess_router.py','routing/model_router.py','sumo/connection.py','optimizers/gnn_adapter.py','optimizers/mpc_adapter.py','optimizers/evps_adapter.py']]; print\\('All Python files: syntax OK'\\)\")",
-      "Bash(python -X utf8 -c ' *)"
-    ]
-  }
-}

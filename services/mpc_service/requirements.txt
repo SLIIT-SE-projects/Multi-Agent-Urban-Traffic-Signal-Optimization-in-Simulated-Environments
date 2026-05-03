@@ -19,3 +19,4 @@ scipy>=1.10.0      # solver fallback (OSQP / IPOPT optional via system pkg)
 # sumolib parses .net.xml to build TLS / lane topology. The actual SUMO
 # binary is not required in this service.
 sumolib>=1.18.0
+casadi>=3.6.4
