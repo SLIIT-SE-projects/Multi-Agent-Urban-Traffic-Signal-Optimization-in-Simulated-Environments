@@ -72,6 +72,13 @@ class Config:
     EVPS_URL: str = os.getenv('EVPS_URL', '')
     EVPS_TIMEOUT_MS: int = int(os.getenv('EVPS_TIMEOUT_MS', '2000'))
 
+    # ── Dashboard API for registry lookup (Phase 6+) ─────────────────
+    # When set, the Manager queries this URL to resolve model names that
+    # aren't found in the per-model MODEL_<NAME>_URL env vars (e.g.
+    # external researcher models registered at runtime via
+    # POST /api/models/register on the dashboard_api).
+    DASHBOARD_API_URL: str = os.getenv('DASHBOARD_API_URL', '')
+
     @property
     def DEFAULT_CONFIG_FILE(self) -> str:
         explicit = os.getenv('DEFAULT_CONFIG_FILE')

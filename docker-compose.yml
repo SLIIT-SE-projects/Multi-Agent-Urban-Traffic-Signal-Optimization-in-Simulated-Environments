@@ -73,6 +73,11 @@ services:
       # MODEL_TIMEOUT_MS: 2000
       # MODEL_RESET_TIMEOUT_MS: 30000
       # EVPS_TIMEOUT_MS: 2000
+
+      # ── Dashboard API for registry lookup (Phase 6+) ──────────────
+      # Lets the Manager resolve external-researcher model names that
+      # aren't covered by MODEL_<NAME>_URL above.
+      DASHBOARD_API_URL: http://dashboard_api:8000
     volumes:
       # Mirror the host repo layout inside the container at /workspace.
       # The in-process adapters in Phase 2 use `../../../services/...`
@@ -176,6 +181,32 @@ services:
   # environment above. The Manager applies the returned overrides via
   # TraCI and relays broadcasts to the driver app's WebSocket.
   # ───────────────────────────────────────────────────────────────────
+  # ───────────────────────────────────────────────────────────────────
+  # Dashboard API Gateway (Phase 6) — FastAPI service that owns:
+  #   - Browser-facing REST + WebSocket gateway for the Traffic Dashboard
+  #   - Model registry (POST /api/models/register, etc.)
+  #   - Telemetry relay from Redis pub/sub to the UI
+  # The Manager queries this service to resolve external-researcher model
+  # names registered at runtime.
+  # ───────────────────────────────────────────────────────────────────
+  dashboard_api:
+    build:
+      context: .                                     # repo root for access to services/config.py
+      dockerfile: services/dashboard_api/Dockerfile
+    container_name: traffic_dashboard_api
+    ports:
+      - "8000:8000"
+    environment:
+      HOST: 0.0.0.0
+      PORT: 8000
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      DASHBOARD_CORS_ORIGIN: http://localhost:5173
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
   evps_service:
     build:
       context: ./services/evps_service

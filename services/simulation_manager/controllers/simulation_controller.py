@@ -392,16 +392,38 @@ class SimulationController:
     def _get_model_http_url(self, name: str):
         """Return the HTTP URL for a model service, or None if not configured.
 
-        Looks up MODEL_<NAME>_URL environment variable.
-        Examples:
-            MODEL_GNN_URL=http://gnn_service:8002
-            MODEL_MPC_URL=http://mpc_service:8003
+        Resolution order (Phase 6+):
+          1. MODEL_<NAME>_URL env var — fast path for built-ins (GNN, MPC)
+          2. Dashboard API registry — Phase 6+ for external researcher models
+             registered at runtime via POST /api/models/register
+          3. None — falls through to the in-process adapter
 
-        An empty-string value is treated the same as unset (so docker-compose
-        env shapes like ``MODEL_GNN_URL: ""`` cleanly disable the HTTP route).
+        An empty-string env value is treated the same as unset.
         """
+        # 1. Env var (fast path)
         url = os.environ.get(f'MODEL_{name.upper()}_URL', '')
-        return url if url else None
+        if url:
+            return url
+
+        # 2. Registry lookup via dashboard_api
+        dashboard_url = os.environ.get('DASHBOARD_API_URL', '')
+        if dashboard_url:
+            try:
+                import requests
+                resp = requests.get(
+                    f"{dashboard_url.rstrip('/')}/api/models/{name}",
+                    timeout=2.0,
+                )
+                if resp.status_code == 200:
+                    record = resp.json()
+                    registered_url = record.get("url")
+                    if registered_url:
+                        print(f"[Manager] Resolved '{name}' via registry → {registered_url}")
+                        return registered_url
+            except Exception as exc:
+                print(f"[Manager] Registry lookup failed for '{name}': {exc}")
+
+        return None
 
     def _build_network_dict_for_reset(self, net_file: str, scenario_name: str) -> dict:
         """Build a network topology dict for the /reset payload.

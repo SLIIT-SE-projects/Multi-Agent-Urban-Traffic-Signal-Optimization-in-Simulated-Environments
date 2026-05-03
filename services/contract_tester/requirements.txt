@@ -1,0 +1,3 @@
+# Contract Tester — Python dependencies
+requests>=2.32.0
+jsonschema>=4.0.0
