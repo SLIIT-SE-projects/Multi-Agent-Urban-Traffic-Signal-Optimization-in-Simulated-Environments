@@ -119,6 +119,27 @@ paths:
           description: Name already registered
 
   /api/models/{name}:
+    get:
+      tags: [models]
+      summary: Look up one registered model by name
+      description: |
+        Used by the Simulation Manager to resolve model names that aren't
+        covered by `MODEL_<NAME>_URL` env vars. Returns the full registration
+        record including the URL the Manager should call.
+      parameters:
+        - name: name
+          in: path
+          required: true
+          schema: {type: string}
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RegisteredModel'
+        '404':
+          description: Model not registered
     delete:
       tags: [models]
       summary: Unregister a model service

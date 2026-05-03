@@ -6,6 +6,30 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 This project adheres to semantic versioning at the **schema** level — see
 `README.md` for versioning policy.
 
+## [1.1.0] — 2026-05-03
+
+### Added — Phase 6: Researcher Onboarding
+
+- **Model Registry** on Dashboard API (`POST /api/models/register`,
+  `GET /api/models`, `GET /api/models/{name}`, `DELETE /api/models/{name}`)
+  — external researchers can register their model service URL at runtime.
+  Registration validates `/info` schema versions before storing.
+- **Contract Tester** (`services/contract_tester/`) — CLI + Docker image
+  that validates any model service URL against
+  `contracts/openapi/model_service.yaml`. Tests `/info`, `/health`, `/reset`,
+  `/predict` (schema + latency + burst + session isolation).
+- **Python Model Template** (`services/templates/python_model_template/`) —
+  minimal FastAPI model with researcher hooks for `/reset` and `/predict`.
+- **Node.js Model Template** (`services/templates/node_model_template/`) —
+  minimal Express model with the same hooks.
+- **Manager registry lookup** — `_get_model_http_url()` now resolves model
+  names through the Dashboard API registry when `DASHBOARD_API_URL` is set,
+  enabling external-researcher models without env var changes.
+- **`dashboard_api.yaml`** — OpenAPI spec updated with model registry
+  endpoints.
+- **`researcher_onboarding.md`** — end-to-end walkthrough for external
+  researchers.
+
 ## [1.0.0] — 2026-05-01
 
 ### Added

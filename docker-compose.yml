@@ -202,6 +202,12 @@ services:
       REDIS_HOST: redis
       REDIS_PORT: 6379
       DASHBOARD_CORS_ORIGIN: http://localhost:5173
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/health')"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
     depends_on:
       redis:
         condition: service_healthy

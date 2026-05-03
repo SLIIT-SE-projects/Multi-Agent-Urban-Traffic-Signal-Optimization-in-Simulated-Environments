@@ -90,7 +90,7 @@ before. Manager handles both action types (`binary_switch` and
 status. Toggle GNN on simultaneously and verify EVPS still wins on its
 target lights.
 
-## Phase 6 — Researcher Onboarding
+## Phase 6 — Researcher Onboarding ✅ (completed 2026-05-03)
 
 **Goal:** External researchers can register their own model and use the
 platform.
