@@ -42,6 +42,10 @@ async def startup_event():
     except Exception as e:
         print(f"DEBUG: Dashboard API failed to connect to Redis: {e}")
 
+@app.get("/api/health")
+async def health():
+    return {"status": "healthy"}
+
 # 4. DEFINE DATA MODEL
 class Command(BaseModel):
     action: str
@@ -99,10 +103,12 @@ async def proxy_get_baseline_data():
 @app.get("/api/network-graph")
 async def get_network_graph():
     try:
-        # Proxy to Simulation Backend
-        sim_url = "http://localhost:5000/api/simulation/topology"
+        # Proxy to Simulation Backend — uses the configured Manager API URL
+        # so it works in both local dev (localhost:5000) and Docker
+        # (simulation_manager:5000) environments.
+        sim_url = f"{Config.MANAGER_API}/simulation/topology"
         print(f"DEBUG: Fetching topology from {sim_url}")
-        response = requests.get(sim_url)
+        response = requests.get(sim_url, timeout=5)
         if response.status_code == 200:
             return response.json()
         else:

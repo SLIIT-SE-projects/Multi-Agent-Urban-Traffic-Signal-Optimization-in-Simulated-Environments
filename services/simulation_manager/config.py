@@ -72,6 +72,12 @@ class Config:
     EVPS_URL: str = os.getenv('EVPS_URL', '')
     EVPS_TIMEOUT_MS: int = int(os.getenv('EVPS_TIMEOUT_MS', '2000'))
 
+    # ── Redis (Phase 3+) ──────────────────────────────────────────
+    # Used to publish per-step metrics (gnn_metrics, mpc_metrics) so the
+    # Dashboard API's WebSocket relay can forward them to the frontend.
+    REDIS_HOST: str = os.getenv('REDIS_HOST', 'localhost')
+    REDIS_PORT: int = int(os.getenv('REDIS_PORT', '6379'))
+
     # ── Dashboard API for registry lookup (Phase 6+) ─────────────────
     # When set, the Manager queries this URL to resolve model names that
     # aren't found in the per-model MODEL_<NAME>_URL env vars (e.g.

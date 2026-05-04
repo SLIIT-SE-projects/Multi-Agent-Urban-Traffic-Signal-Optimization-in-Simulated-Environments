@@ -1,5 +1,4 @@
 import React, { useEffect, useState } from 'react';
-import { io } from 'socket.io-client';
 import { 
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer 
 } from 'recharts';
@@ -20,7 +19,11 @@ interface TrafficData {
   cumulative_throughput: number;
 }
 
-// Simulated Hook (Replace with your real socket logic)
+// Dashboard API base URL (same host, port 8000)
+const DASHBOARD_API = 'http://localhost:8000';
+
+// Real-time data hook — connects to the Dashboard API WebSocket relay
+// which subscribes to Redis pub/sub channels (gnn_metrics, mpc_metrics, etc.)
 const useTrafficSocket = () => {
   const [isConnected, setIsConnected] = useState(false);
   const [dataHistory, setDataHistory] = useState<TrafficData[]>([]);
@@ -29,30 +32,65 @@ const useTrafficSocket = () => {
   });
 
   useEffect(() => {
-    const socket = io('http://localhost:5001');
-    socket.on('connect', () => setIsConnected(true));
-    socket.on('disconnect', () => setIsConnected(false));
-    
-    socket.on('traffic_update', (data: any) => {
-       // ... (Keep your existing data parsing logic here)
-       // For demo purposes, I'm passing the data through as-is or mocking if backend is off
-       setCurrentMetrics(prev => ({
-         ...prev,
-         ...data,
-         cumulative_throughput: prev.cumulative_throughput + (data.throughput || 0)
-       }));
-       
-       setDataHistory(prev => {
-         const newH = [...prev, { ...data, cumulative_throughput: 0 }]; // Simplified for demo
-         return newH.length > 60 ? newH.slice(newH.length - 60) : newH;
-       });
-    });
+    // Connect to the Dashboard API's WebSocket relay
+    const ws = new WebSocket('ws://localhost:8000/ws');
 
-    return () => { socket.disconnect(); };
+    ws.onopen = () => {
+      console.log('✅ Connected to Dashboard API WebSocket');
+      setIsConnected(true);
+    };
+
+    ws.onclose = () => {
+      console.log('⚠️ Disconnected from Dashboard API WebSocket');
+      setIsConnected(false);
+    };
+
+    ws.onerror = (err) => {
+      console.error('WebSocket error:', err);
+    };
+
+    ws.onmessage = (event) => {
+      try {
+        // Dashboard API sends: { channel: "gnn_metrics", data: {...} }
+        const envelope = JSON.parse(event.data);
+        const { channel, data } = envelope;
+
+        // Process gnn_metrics and mpc_metrics channels
+        if (channel === 'gnn_metrics' || channel === 'mpc_metrics') {
+          setCurrentMetrics(prev => ({
+            ...prev,
+            ...data,
+            cumulative_throughput: prev.cumulative_throughput + (data.throughput || 0)
+          }));
+
+          setDataHistory(prev => {
+            const newH = [...prev, { ...data, cumulative_throughput: 0 }];
+            return newH.length > 60 ? newH.slice(newH.length - 60) : newH;
+          });
+        }
+      } catch (e) {
+        console.error('Failed to parse WebSocket message:', e);
+      }
+    };
+
+    return () => { ws.close(); };
   }, []);
 
-  const handleStart = async () => fetch('http://localhost:5001/api/start', { method: 'POST' });
-  const handleStop = async () => fetch('http://localhost:5001/api/stop', { method: 'POST' });
+  const handleStart = async () => {
+    await fetch(`${DASHBOARD_API}/api/control`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'start', model: 'gnn' })
+    });
+  };
+
+  const handleStop = async () => {
+    await fetch(`${DASHBOARD_API}/api/control`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'stop', model: 'gnn' })
+    });
+  };
 
   return { isConnected, currentMetrics, dataHistory, handleStart, handleStop };
 };

@@ -62,6 +62,10 @@ services:
       SCENARIOS_DIR: /workspace/simulation_and_control_panel/scenarios
       DEFAULT_SCENARIO: grid3x3
 
+      # ── Redis (metrics publishing) ────────────────────────────────
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+
       # ── Model Routing (Phase 3+) ─────────────────────────────────
       # Uncomment to route a model through HTTP to its dedicated service.
       # Without it, the Manager uses its in-process adapter (Phase 2
@@ -202,6 +206,8 @@ services:
       REDIS_HOST: redis
       REDIS_PORT: 6379
       DASHBOARD_CORS_ORIGIN: http://localhost:5173
+      MANAGER_API: http://traffic_simulation_manager:5000/api
+      MANAGER_WS: http://traffic_simulation_manager:5000
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/health')"]
       interval: 30s

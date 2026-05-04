@@ -15,6 +15,9 @@ python-dotenv==1.0.0
 # ── HTTP client (Phase 3+) — used by HttpModelRouter to call model services ─
 requests>=2.32.0
 
+# ── Redis (Phase 3+) — publishes metrics so Dashboard API can relay to frontend ─
+redis>=5.0.0
+
 # ── SUMO Python integration ──────────────────────────────────────────────
 # Both packages are pip-installable WITHOUT needing the SUMO C++ binary.
 # In SUMO_MODE=remote the binary lives on the host.

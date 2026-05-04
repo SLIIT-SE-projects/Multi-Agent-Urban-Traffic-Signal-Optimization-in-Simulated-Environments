@@ -1,9 +1,11 @@
 import os
 import sys
+import json
 import traci
 import threading
 import time
 import xml.etree.ElementTree as ET
+import redis
 from optimizers.gnn_adapter import GNNTrafficOptimizer
 from optimizers.mpc_adapter import MPCTrafficOptimizer
 
@@ -54,6 +56,13 @@ class SimulationController:
         self.evps_client = None              # HTTP client to EVPS service if EVPS_URL set
         self._evps_session_id = None
         self._init_evps_client()
+
+        # ── Redis metrics publisher (Phase 3+) ──────────────────────
+        # Publishes per-step metrics to gnn_metrics / mpc_metrics Redis
+        # channels so the Dashboard API WebSocket relay can forward them
+        # to the GNN/MPC dashboard frontends.
+        self._redis_publisher = None
+        self._init_redis_publisher()
 
     def _get_net_file_from_config(self):
         """
@@ -597,11 +606,15 @@ class SimulationController:
                 opt_telemetry = {}
                 if self.optimization_enabled and self.optimizer and hasattr(self.optimizer, 'get_telemetry'):
                     opt_telemetry = self.optimizer.get_telemetry()
+
+                # Also include telemetry from HTTP-routed model if available
+                if not opt_telemetry and self._last_telemetry:
+                    opt_telemetry = self._last_telemetry
                 
                 if opt_telemetry:
                     print(f"DEBUG Emitter: Telemetry payload contains: {list(opt_telemetry.keys())}")
-                    
-                self.socketio.emit('simulation_step', {
+
+                step_data = {
                     'step': self.current_step,
                     'lanes': snapshot['lanes'],
                     'intersections': snapshot['intersections'],
@@ -609,7 +622,12 @@ class SimulationController:
                         'arrived_vehicles': arrived_vehicles
                     },
                     'optimizer_telemetry': opt_telemetry
-                })
+                }
+
+                self.socketio.emit('simulation_step', step_data)
+
+                # ── Publish to Redis for Dashboard API WebSocket relay ──
+                self._publish_metrics_to_redis(step_data)
             except Exception as e:
                 print(f"Socket Emit Error: {e}")
 
@@ -1113,6 +1131,85 @@ class SimulationController:
             print(f"🌐 [EVPS] Using HTTP client → {evps_url}")
         except Exception as exc:
             print(f"⚠️ [EVPS] Failed to init client: {exc}")
+
+    # ── Redis metrics publisher (Phase 3+) ────────────────────────
+
+    def _init_redis_publisher(self) -> None:
+        """Create a synchronous Redis client for publishing metrics.
+
+        Metrics are published to gnn_metrics / mpc_metrics channels so the
+        Dashboard API's WebSocket relay (``/ws``) can forward them to the
+        GNN/MPC dashboard frontends.  If Redis is unreachable at startup
+        we silently skip — metrics won't reach the dashboards but the
+        simulation keeps running.
+        """
+        from config import config as _cfg
+        try:
+            self._redis_publisher = redis.Redis(
+                host=_cfg.REDIS_HOST,
+                port=_cfg.REDIS_PORT,
+                decode_responses=True,
+            )
+            self._redis_publisher.ping()
+            print(f"📡 [Redis] Metrics publisher connected → {_cfg.REDIS_HOST}:{_cfg.REDIS_PORT}")
+        except Exception as exc:
+            print(f"⚠️ [Redis] Metrics publisher unavailable (dashboard will have no data): {exc}")
+            self._redis_publisher = None
+
+    def _publish_metrics_to_redis(self, step_data: dict) -> None:
+        """Publish aggregated per-step metrics to the appropriate Redis channel.
+
+        Mirrors the metric shape the old GNN worker (``worker.py``) published
+        to ``gnn_metrics`` so the Dashboard API WebSocket and the React
+        frontend keep working without changes.
+        """
+        if self._redis_publisher is None:
+            return
+
+        # Determine which channel to publish on based on the active optimizer
+        channel = "gnn_metrics"  # default
+        if self.model_router is not None and hasattr(self.model_router, '_model_name'):
+            model_name = getattr(self.model_router, '_model_name', 'gnn')
+            channel = f"{model_name}_metrics"
+        elif self.optimizer is not None:
+            opt_cls = type(self.optimizer).__name__.lower()
+            if 'mpc' in opt_cls:
+                channel = "mpc_metrics"
+
+        # Aggregate lanes into the summary metrics the dashboard expects
+        lanes = step_data.get('lanes', {})
+        total_queue = 0
+        total_waiting = 0
+        total_co2 = 0
+        speed_sum = 0
+        lane_count = 0
+
+        for l_data in lanes.values():
+            total_queue += l_data.get('queue_length', 0)
+            total_waiting += l_data.get('waiting_time', 0)
+            total_co2 += l_data.get('co2', 0)
+            speed_sum += l_data.get('avg_speed', 0)
+            lane_count += 1
+
+        avg_speed = (speed_sum / lane_count) if lane_count > 0 else 0
+        throughput = step_data.get('global', {}).get('arrived_vehicles', 0)
+
+        metrics = {
+            'step': step_data.get('step', 0),
+            'total_queue': total_queue,
+            'avg_speed': round(avg_speed, 2),
+            'total_co2': round(total_co2, 2),
+            'total_waiting_time': round(total_waiting, 2),
+            'throughput': throughput,
+            'intersections': step_data.get('intersections', {}),
+            'lanes': lanes,
+            'gnn_telemetry': step_data.get('optimizer_telemetry', {}),
+        }
+
+        try:
+            self._redis_publisher.publish(channel, json.dumps(metrics))
+        except Exception:
+            pass  # Non-critical — don't break the simulation loop
 
     # ── WebSocket client management (driver app) ──────────────────
 
